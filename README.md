@@ -19,6 +19,7 @@ abc_reading_workspace/
       data_loader.py
       event_parser.py
       feature_builder.py
+      scorer.py
       models.py
   tests/
   scripts/
@@ -94,6 +95,19 @@ result = builder.build_features(
 frame = builder.to_frame(result)
 ```
 
+### `scorer`
+
+Scores nodes with risk-aware ranking based on the built features.
+
+Main class:
+
+```python
+from influence_strategy.scorer import Scorer
+
+score_result = Scorer().score(result)
+score_frame = Scorer().to_frame(score_result)
+```
+
 ## Tests
 
 ```powershell
@@ -104,6 +118,7 @@ python -m pytest
 
 ```powershell
 python tests/visualize_feature_builder.py
+python tests/visualize_scorer.py
 ```
 
-Preview files will be saved under `outputs/feature_builder/`.
+Preview files will be saved under `outputs/feature_builder/` and `outputs/scorer/`.

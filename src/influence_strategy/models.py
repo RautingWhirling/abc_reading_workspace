@@ -161,3 +161,33 @@ class FeatureBuildResult(BaseModel):
     product_context: ProductContext
     summary: FeatureBuildSummary
     node_features: list[NodeFeature]
+
+
+class NodeScore(NodeFeature):
+    raw_dispatch_score: float = 0.0
+    risk_score: float = 0.0
+    risk_level: Literal["low", "medium", "high"] = "low"
+    final_score: float = 0.0
+    eligible: bool = False
+    manual_review_required: bool = False
+    priority_tier: Literal["high", "medium", "low"] = "low"
+    risk_flags: list[str] = Field(default_factory=list)
+    selection_reasons: list[str] = Field(default_factory=list)
+
+
+class ScoreSummary(BaseModel):
+    event_id: str
+    event_type: str
+    node_count: int
+    eligible_count: int
+    manual_review_count: int
+    high_priority_count: int
+    avg_final_score: float
+    avg_risk_score: float
+
+
+class ScoreResult(BaseModel):
+    event: ParsedEvent
+    product_context: ProductContext
+    summary: ScoreSummary
+    node_scores: list[NodeScore]
