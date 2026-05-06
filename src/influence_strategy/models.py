@@ -218,3 +218,99 @@ class SelectionResult(BaseModel):
     summary: SelectionSummary
     selected_nodes: list[SelectedNode]
     fallback_nodes: list[SelectedNode]
+
+
+class StrategyNodePlan(BaseModel):
+    user_id: str
+    user_name: str
+    selection_rank: int = 0
+    selection_bucket: Literal["primary", "fallback"] = "primary"
+    selected_role: str
+    dispatch_stage: str
+    dispatch_priority: str = "p3"
+    final_score: float = 0.0
+    risk_level: Literal["low", "medium", "high"] = "low"
+    manual_review_required: bool = False
+    matched_keywords: list[str] = Field(default_factory=list)
+    timing_window: str = ""
+    frequency_per_day: int = Field(default=1, ge=1, le=24)
+    recommended_action: str = ""
+    suggested_content_style: str = ""
+    rationale: list[str] = Field(default_factory=list)
+
+
+class StrategyStagePlan(BaseModel):
+    stage_name: str
+    stage_label: str
+    time_window: str
+    objective: str
+    node_count: int = 0
+    node_ids: list[str] = Field(default_factory=list)
+    selected_roles: list[str] = Field(default_factory=list)
+    content_focus: str = ""
+    success_signal: str = ""
+
+
+class StrategyFrequencyPlan(BaseModel):
+    global_cap_per_day: int = 3
+    core_publish_node_per_day: int = 1
+    interaction_response_node_per_day: int = 2
+    amplification_node_per_day: int = 1
+    support_node_per_day: int = 1
+    notes: list[str] = Field(default_factory=list)
+
+
+class StrategyPlatformPlan(BaseModel):
+    primary_platform: str = "weibo_simulated"
+    secondary_platforms: list[str] = Field(default_factory=list)
+    execution_mode: str = "single_platform_simulated"
+    coordination_notes: list[str] = Field(default_factory=list)
+
+
+class StrategyContentPlan(BaseModel):
+    core_publish_node: str = ""
+    interaction_response_node: str = ""
+    amplification_node: str = ""
+    support_node: str = ""
+    general_guardrails: list[str] = Field(default_factory=list)
+
+
+class StrategyRiskControl(BaseModel):
+    risk_level: Literal["low", "medium", "high"] = "medium"
+    review_required: bool = False
+    manual_review_node_ids: list[str] = Field(default_factory=list)
+    fallback_trigger: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class DispatchStrategy(BaseModel):
+    target_object: list[str] = Field(default_factory=list)
+    objective: str = ""
+    time_plan: dict[str, str] = Field(default_factory=dict)
+    frequency_plan: StrategyFrequencyPlan = Field(default_factory=StrategyFrequencyPlan)
+    platform_plan: StrategyPlatformPlan = Field(default_factory=StrategyPlatformPlan)
+    content_plan: StrategyContentPlan = Field(default_factory=StrategyContentPlan)
+    risk_control: StrategyRiskControl = Field(default_factory=StrategyRiskControl)
+    explainability: list[str] = Field(default_factory=list)
+
+
+class StrategySummary(BaseModel):
+    event_id: str
+    event_type: str
+    selected_count: int
+    fallback_count: int
+    primary_platform: str
+    estimated_total_dispatches: int = 0
+    review_required: bool = False
+    avg_selected_final_score: float = 0.0
+
+
+class StrategyResult(BaseModel):
+    event: ParsedEvent
+    product_context: ProductContext
+    selection_summary: SelectionSummary
+    summary: StrategySummary
+    stage_plans: list[StrategyStagePlan]
+    selected_nodes: list[StrategyNodePlan]
+    fallback_nodes: list[StrategyNodePlan]
+    strategy: DispatchStrategy
