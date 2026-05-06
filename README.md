@@ -1,12 +1,12 @@
 # abc_reading Workspace
 
-这个目录是后续针对 `abc_reading` 数据集继续工作的专用工作区。
+This workspace is focused on the `abc_reading` dataset and the baseline pipeline for
+influence event distribution strategy generation.
 
-## 目录结构
+## Structure
 
 ```text
 abc_reading_workspace/
-  README.md
   data/
     raw/
       abc_reading_profile.graph.anon
@@ -14,61 +14,63 @@ abc_reading_workspace/
       abc_reading_product_info.json
     derived/
       abc_reading_profile_with_neighbors.graph.anon
+  src/
+    influence_strategy/
+      data_loader.py
+      event_parser.py
+      models.py
+  tests/
   scripts/
     enrich_neighbors.py
+  environment.yml
+  pyproject.toml
 ```
 
-## 数据说明
+## Environment
 
-- `raw/abc_reading_profile.graph.anon`
-  - 原始用户画像数据
-- `raw/abc_reading_interaction.graph.anon`
-  - 原始互动数据
-- `raw/abc_reading_product_info.json`
-  - 从总 `product_info.jsonl` 中筛出的 `abc_reading` 元数据
-- `derived/abc_reading_profile_with_neighbors.graph.anon`
-  - 在原始画像基础上新增邻居关系属性后的文件
+This project uses `conda` for environment management.
 
-## 邻居增强脚本
-
-重新生成带 `neighbors` 的画像文件：
-
-```bash
-python scripts/enrich_neighbors.py
+```powershell
+conda env create -f environment.yml
+conda activate abc-reading-strategy
 ```
 
-默认输入：
+## Implemented Modules
 
-- `data/raw/abc_reading_profile.graph.anon`
-- `data/raw/abc_reading_interaction.graph.anon`
+### `data_loader`
 
-默认输出：
+Loads and validates:
 
-- `data/derived/abc_reading_profile_with_neighbors.graph.anon`
+- product context
+- raw user profiles
+- raw interaction records
+- neighbor-enriched profiles
 
-## 邻居字段说明
+Main class:
 
-每个用户会新增：
+```python
+from influence_strategy.data_loader import DataLoader
 
-- `graph_attributes`
-  - `neighbor_count`
-  - `engaged_by_neighbor_count`
-  - `engaged_to_neighbor_count`
-  - `mutual_neighbor_count`
-  - `self_interaction_count`
-  - `received_*` / `made_*` 统计
-  - `isolated`
-- `neighbors`
-  - `neighbor_id`
-  - `relation`
-  - `received_comment_count`
-  - `received_repost_count`
-  - `made_comment_count`
-  - `made_repost_count`
-  - `total_interaction_count`
+loader = DataLoader(".")
+summary = loader.build_summary()
+bundle = loader.load_dataset_bundle()
+```
 
-关系语义：
+### `event_parser`
 
-- `engaged_by`：对方在当前用户帖子下互动
-- `engaged_to`：当前用户去对方帖子下互动
-- `mutual`：双方都有过互动
+Parses natural language or dictionary input into a structured event object.
+
+Main class:
+
+```python
+from influence_strategy.event_parser import RuleBasedEventParser
+
+parser = RuleBasedEventParser()
+event = parser.parse("希望围绕亲子阅读和英语启蒙做一次传播活动")
+```
+
+## Tests
+
+```powershell
+python -m pytest
+```
