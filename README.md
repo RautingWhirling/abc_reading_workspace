@@ -20,6 +20,7 @@ abc_reading_workspace/
       event_parser.py
       feature_builder.py
       scorer.py
+      selector.py
       models.py
   tests/
   scripts/
@@ -108,6 +109,20 @@ score_result = Scorer().score(result)
 score_frame = Scorer().to_frame(score_result)
 ```
 
+### `selector`
+
+Selects the final candidate nodes and builds a role-aware shortlist plus fallbacks.
+
+Main class:
+
+```python
+from influence_strategy.selector import Selector
+
+selection_result = Selector().select(score_result)
+selected_frame = Selector().to_frame(selection_result)
+fallback_frame = Selector().to_frame(selection_result, bucket="fallback")
+```
+
 ## Tests
 
 ```powershell
@@ -119,6 +134,7 @@ python -m pytest
 ```powershell
 python tests/visualize_feature_builder.py
 python tests/visualize_scorer.py
+python tests/visualize_selector.py
 ```
 
-Preview files will be saved under `outputs/feature_builder/` and `outputs/scorer/`.
+Preview files will be saved under `outputs/feature_builder/`, `outputs/scorer/`, and `outputs/selector/`.

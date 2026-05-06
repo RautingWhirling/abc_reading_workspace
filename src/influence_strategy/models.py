@@ -191,3 +191,30 @@ class ScoreResult(BaseModel):
     product_context: ProductContext
     summary: ScoreSummary
     node_scores: list[NodeScore]
+
+
+class SelectedNode(NodeScore):
+    selection_rank: int = 0
+    selected_role: str = ""
+    dispatch_stage: str = ""
+    dispatch_priority: str = "p3"
+    selection_bucket: Literal["primary", "fallback"] = "primary"
+
+
+class SelectionSummary(BaseModel):
+    event_id: str
+    event_type: str
+    max_selected_nodes: int
+    selected_count: int
+    fallback_count: int
+    selected_role_distribution: dict[str, int] = Field(default_factory=dict)
+    selected_stage_distribution: dict[str, int] = Field(default_factory=dict)
+    avg_selected_final_score: float = 0.0
+
+
+class SelectionResult(BaseModel):
+    event: ParsedEvent
+    product_context: ProductContext
+    summary: SelectionSummary
+    selected_nodes: list[SelectedNode]
+    fallback_nodes: list[SelectedNode]
