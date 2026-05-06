@@ -109,3 +109,55 @@ class ParsedEvent(BaseModel):
     constraints: EventConstraints = Field(default_factory=EventConstraints)
     parser_name: str = "rule_based_v1"
     reasoning: list[str] = Field(default_factory=list)
+
+
+class NodeFeature(BaseModel):
+    user_id: str
+    user_name: str
+    event_id: str
+    event_type: str
+    role_hint: str
+    influencer_flag: bool = False
+    is_interaction_source: bool = False
+    follower_count: int = 0
+    friend_count: int = 0
+    interest_count: int = 0
+    has_description: bool = False
+    neighbor_count: int = 0
+    mutual_neighbor_count: int = 0
+    received_interaction_count: int = 0
+    made_interaction_count: int = 0
+    received_comment_count: int = 0
+    received_repost_count: int = 0
+    made_comment_count: int = 0
+    made_repost_count: int = 0
+    self_interaction_count: int = 0
+    comment_ratio: float = 0.0
+    repost_ratio: float = 0.0
+    mutual_neighbor_ratio: float = 0.0
+    profile_completeness_score: float = 0.0
+    topic_match_score: float = 0.0
+    influence_score: float = 0.0
+    diffusion_score: float = 0.0
+    activity_score: float = 0.0
+    stability_score: float = 0.0
+    feature_ready_score: float = 0.0
+    keyword_hit_count: int = 0
+    matched_keywords: list[str] = Field(default_factory=list)
+
+
+class FeatureBuildSummary(BaseModel):
+    event_id: str
+    event_type: str
+    node_count: int
+    source_node_count: int
+    matched_node_count: int
+    avg_feature_ready_score: float
+    avg_topic_match_score: float
+
+
+class FeatureBuildResult(BaseModel):
+    event: ParsedEvent
+    product_context: ProductContext
+    summary: FeatureBuildSummary
+    node_features: list[NodeFeature]
