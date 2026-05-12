@@ -73,6 +73,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=str,
         help="允许的平台列表，使用逗号分隔，例如 weibo_simulated,optional_simulated。",
     )
+    parser.add_argument(
+        "--disable-llm",
+        action="store_true",
+        help="关闭大模型内容生成，使用规则模板兜底。",
+    )
     return parser
 
 
@@ -97,14 +102,14 @@ def main() -> int:
         campaign_window_hours=args.campaign_window_hours,
         max_frequency_per_day=args.max_frequency_per_day,
         allowed_platforms=allowed_platforms,
+        use_llm=not args.disable_llm,
     )
 
     console_summary = {
         "output_path": str(output_path),
-        "event_id": payload["source_event"]["event_id"],
-        "opinion_variant_count": payload["source_event"]["opinion_variant_count"],
-        "five_dimensions": list(payload["five_dimensions"].keys()),
-        "selected_digital_human_count": len(payload["selected_digital_humans"]),
+        "event_name": payload["事件名称"],
+        "selected_digital_human_ids": payload["选取数字人id组"],
+        "selected_digital_human_count": len(payload["选取数字人id组"]),
     }
     print(json.dumps(console_summary, ensure_ascii=True, indent=2))
     return 0

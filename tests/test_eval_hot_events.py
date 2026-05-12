@@ -6,10 +6,24 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from influence_strategy.eval_hot_events import (
-    FIVE_DIMENSION_KEYS,
     hot_event_to_pipeline_payload,
     run_hot_event_evaluation,
 )
+
+
+class FakeLLMClient:
+    def generate_json(self, *, system_prompt: str, user_prompt: str):
+        payload = json.loads(user_prompt)
+        nodes = {}
+        for node in payload["已评判可接入大模型的数字人节点"]:
+            user_id = node["user_id"]
+            nodes[user_id] = {
+                "发帖内容": f"LLM生成发帖内容-{user_id}",
+                "目标群体画像": f"LLM生成目标群体画像-{user_id}",
+                "目标群体交互策略": f"LLM生成目标群体交互策略-{user_id}",
+                "互动策略": f"LLM生成互动策略-{user_id}",
+            }
+        return {"nodes": nodes}
 
 
 class EvalHotEventsTest(unittest.TestCase):
@@ -46,6 +60,7 @@ class EvalHotEventsTest(unittest.TestCase):
                             "domain": "technology",
                             "event_title": "高端AI芯片供应引发产业链关注",
                             "event_summary": "高端算力芯片供需紧张，企业关注替代和优化方案。",
+                            "target": "说明AI芯片供应变化对产业链的影响。",
                             "is_synthetic": True,
                             "opinion_variants": [
                                 f"AI芯片供应链叙述变体 {index}"
@@ -65,20 +80,60 @@ class EvalHotEventsTest(unittest.TestCase):
             )
 
             self.assertTrue(output_path.exists())
-            self.assertEqual(payload["source_event"]["opinion_variant_count"], 10)
-            self.assertEqual(set(payload["five_dimensions"].keys()), set(FIVE_DIMENSION_KEYS))
-            self.assertIn("time_plan", payload["five_dimensions"]["time_arrangement"])
-            self.assertIn("frequency_plan", payload["five_dimensions"]["frequency_arrangement"])
-            self.assertIn("platform_plan", payload["five_dimensions"]["platform_arrangement"])
-            self.assertIn("content_plan", payload["five_dimensions"]["content_arrangement"])
-            self.assertGreaterEqual(len(payload["selected_digital_humans"]), 1)
+            self.assertEqual(payload["事件名称"], "高端AI芯片供应引发产业链关注")
+            self.assertGreaterEqual(len(payload["选取数字人id组"]), 1)
 
-            first_human = payload["selected_digital_humans"][0]
-            self.assertIn("user_id", first_human)
-            self.assertIn("selected_role", first_human)
-            self.assertIn("selection_explanation", first_human)
-            self.assertIn("metrics", first_human)
-            self.assertIn("influence_score", first_human["metrics"])
+            first_human_id = payload["选取数字人id组"][0]
+            first_human = payload[f"数字人id{first_human_id}"]
+            self.assertIn("时间阶段", first_human)
+            self.assertIn("发帖频率", first_human)
+            self.assertIn("发帖平台", first_human)
+            self.assertIn("发帖内容", first_human)
+            self.assertIn("目标受众", first_human)
+            self.assertIn("与其他数字人互动策略", first_human)
+            self.assertIn("目标群体画像", first_human["目标受众"])
+            self.assertIn("目标群体交互策略", first_human["目标受众"])
+            self.assertIn("互动数字人id集合", first_human["与其他数字人互动策略"])
+            self.assertIn("互动策略", first_human["与其他数字人互动策略"])
+            self.assertIn("说明AI芯片供应变化对产业链的影响", first_human["发帖内容"])
+
+    def test_run_hot_event_evaluation_replaces_text_fields_with_llm_content(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_minimal_workspace(root)
+
+            eval_dir = root / "eval"
+            eval_dir.mkdir(parents=True)
+            input_path = eval_dir / "hot_event_opinion_variants.json"
+            input_path.write_text(
+                json.dumps(
+                    {
+                        "event_id": "hot_event_eval_llm",
+                        "domain": "technology",
+                        "event_title": "AI芯片供应测试事件",
+                        "event_summary": "高端算力芯片供需紧张。",
+                        "target": "测试大模型替换内容。",
+                        "opinion_variants": [f"叙述 {index}" for index in range(1, 11)],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            output_path, payload = run_hot_event_evaluation(
+                workspace_root=root,
+                input_path=input_path,
+                output_dir=eval_dir / "output",
+                llm_client=FakeLLMClient(),
+            )
+
+            self.assertTrue(output_path.exists())
+            first_human_id = payload["选取数字人id组"][0]
+            first_human = payload[f"数字人id{first_human_id}"]
+            self.assertEqual(first_human["发帖内容"], f"LLM生成发帖内容-{first_human_id}")
+            self.assertEqual(first_human["目标受众"]["目标群体画像"], f"LLM生成目标群体画像-{first_human_id}")
+            self.assertEqual(first_human["目标受众"]["目标群体交互策略"], f"LLM生成目标群体交互策略-{first_human_id}")
+            self.assertEqual(first_human["与其他数字人互动策略"]["互动策略"], f"LLM生成互动策略-{first_human_id}")
 
     def _write_minimal_workspace(self, root: Path) -> None:
         raw_dir = root / "data" / "raw"

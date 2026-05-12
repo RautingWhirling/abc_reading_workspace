@@ -48,7 +48,8 @@ class DataLoader:
             raise FileNotFoundError(f"Required dataset file not found: {path}")
 
     def load_product_context(self) -> ProductContext:
-        self._ensure_file(self.product_info_path)
+        if not self.product_info_path.exists():
+            return ProductContext(product_name=self.product_name)
         payload = self._read_json(self.product_info_path)
         if not isinstance(payload, dict):
             raise ValueError("Product info file must contain one JSON object.")
@@ -57,8 +58,12 @@ class DataLoader:
         return ProductContext.model_validate(payload)
 
     def load_profiles(self, limit: int | None = None) -> dict[str, UserProfile]:
-        self._ensure_file(self.profile_path)
-        payload = self._read_json(self.profile_path)
+        if self.profile_path.exists():
+            payload = self._read_json(self.profile_path)
+        elif self.enriched_profile_path.exists():
+            payload = self._read_json(self.enriched_profile_path)
+        else:
+            self._ensure_file(self.profile_path)
         if not isinstance(payload, dict):
             raise ValueError("Profile file must contain a JSON object.")
 
@@ -77,7 +82,8 @@ class DataLoader:
         limit_sources: int | None = None,
         limit_records_per_source: int | None = None,
     ) -> dict[str, list[InteractionRecord]]:
-        self._ensure_file(self.interaction_path)
+        if not self.interaction_path.exists():
+            return {}
         payload = self._read_json(self.interaction_path)
         if not isinstance(payload, dict):
             raise ValueError("Interaction file must contain a JSON object.")
@@ -132,8 +138,10 @@ class DataLoader:
 
     def build_summary(self) -> DatasetSummary:
         product_context = self.load_product_context()
-        profiles_raw = self._read_json(self.profile_path)
-        interactions_raw = self._read_json(self.interaction_path)
+        profiles_raw = self._read_json(
+            self.profile_path if self.profile_path.exists() else self.enriched_profile_path
+        )
+        interactions_raw = self._read_json(self.interaction_path) if self.interaction_path.exists() else {}
         enriched_count: int | None = None
         if self.enriched_profile_path.exists():
             enriched_raw = self._read_json(self.enriched_profile_path)
