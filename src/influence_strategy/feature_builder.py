@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
+from json import JSONDecodeError
 
 import pandas as pd
 from rapidfuzz import fuzz
@@ -45,8 +46,16 @@ class FeatureBuilder:
         loader = DataLoader(workspace_root, product_name=self.product_name)
         product_context = loader.load_product_context()
         profiles = loader.load_profiles(limit=profile_limit)
-        enriched_profiles = loader.load_enriched_profiles(limit=profile_limit)
-        source_user_ids = set(loader.load_interactions(limit_sources=None, limit_records_per_source=0).keys())
+        try:
+            enriched_profiles = loader.load_enriched_profiles(limit=profile_limit)
+        except (JSONDecodeError, ValueError):
+            enriched_profiles = {}
+        try:
+            source_user_ids = set(
+                loader.load_interactions(limit_sources=None, limit_records_per_source=0).keys()
+            )
+        except (JSONDecodeError, ValueError):
+            source_user_ids = set()
         return self.build_features(
             product_context=product_context,
             profiles=profiles,
@@ -127,6 +136,15 @@ class FeatureBuilder:
             made_comment_count = graph_attributes.made_comment_count if graph_attributes else 0
             made_repost_count = graph_attributes.made_repost_count if graph_attributes else 0
             self_interaction_count = graph_attributes.self_interaction_count if graph_attributes else 0
+            has_graph_signal = bool(
+                graph_attributes
+                and (
+                    neighbor_count
+                    or received_interaction_count
+                    or made_interaction_count
+                    or mutual_neighbor_count
+                )
+            )
 
             neighbor_score = self._log_score(neighbor_count, neighbor_max_log)
             received_score = self._log_score(received_interaction_count, received_max_log)
@@ -150,24 +168,33 @@ class FeatureBuilder:
                 total_interaction_count=total_interaction_count,
                 self_interaction_count=self_interaction_count,
             )
-            influence_score = _clip_score(
-                0.45 * follower_score
-                + 0.30 * received_score
-                + 0.15 * neighbor_score
-                + 0.10 * float(user_id in influencer_ids)
-            )
-            diffusion_score = _clip_score(
-                0.35 * neighbor_score
-                + 0.25 * made_score
-                + 0.25 * mutual_neighbor_ratio
-                + 0.15 * repost_ratio
-            )
-            activity_score = _clip_score(
-                0.45 * received_score
-                + 0.35 * made_score
-                + 0.10 * comment_ratio
-                + 0.10 * friend_score
-            )
+            if has_graph_signal:
+                influence_score = _clip_score(
+                    0.45 * follower_score
+                    + 0.30 * received_score
+                    + 0.15 * neighbor_score
+                    + 0.10 * float(user_id in influencer_ids)
+                )
+                diffusion_score = _clip_score(
+                    0.35 * neighbor_score
+                    + 0.25 * made_score
+                    + 0.25 * mutual_neighbor_ratio
+                    + 0.15 * repost_ratio
+                )
+                activity_score = _clip_score(
+                    0.45 * received_score
+                    + 0.35 * made_score
+                    + 0.10 * comment_ratio
+                    + 0.10 * friend_score
+                )
+            else:
+                influence_score = _clip_score(
+                    0.75 * follower_score
+                    + 0.15 * friend_score
+                    + 0.10 * float(user_id in influencer_ids)
+                )
+                diffusion_score = _clip_score(0.45 * friend_score + 0.35 * follower_score)
+                activity_score = _clip_score(0.55 * friend_score + 0.25 * follower_score)
             feature_ready_score = _clip_score(
                 0.35 * influence_score
                 + 0.25 * diffusion_score

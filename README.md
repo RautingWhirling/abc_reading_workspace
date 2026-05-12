@@ -90,6 +90,14 @@ python main.py --event-text "希望围绕亲子阅读与英语启蒙做一次传
 python main.py --event-file samples\event.json
 ```
 
+运行 `eval` 热点事件样例，并在 `eval/output` 下生成包含五个维度和数字人选择说明的结果：
+
+```powershell
+python run_eval.py --event-id hot_event_001
+```
+
+不指定 `--event-id` 时默认读取 `eval/hot_event_opinion_variants.json` 的第一条热点数据；每条热点数据中的 `opinion_variants` 会作为 10 条不同叙述一起写入事件描述。
+
 Windows 备注：
 
 - 如果直接使用 `conda run -n abc-reading-strategy python main.py --event-text "中文事件"`，`conda` 本身可能因为终端编码报错
@@ -136,6 +144,18 @@ outputs/strategy/strategy_<event_id>.json
 - `content_plan`
 - `risk_control`
 - `explainability`
+
+`run_eval.py` 的输出默认写入：
+
+```text
+eval/output/<event_id>_strategy_output.json
+```
+
+该文件会额外整理：
+
+- `five_dimensions`：分发对象、时间安排、频率安排、平台安排、内容安排
+- `selected_digital_humans`：被选中分发的数字人信息、角色、阶段、评分、风险和选择理由
+- `fallback_digital_humans`：备选数字人信息
 
 说明：
 

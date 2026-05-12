@@ -231,6 +231,17 @@ class StrategyNodePlan(BaseModel):
     final_score: float = 0.0
     risk_level: Literal["low", "medium", "high"] = "low"
     manual_review_required: bool = False
+    follower_count: int = 0
+    friend_count: int = 0
+    neighbor_count: int = 0
+    mutual_neighbor_count: int = 0
+    received_interaction_count: int = 0
+    made_interaction_count: int = 0
+    influence_score: float = 0.0
+    diffusion_score: float = 0.0
+    topic_match_score: float = 0.0
+    stability_score: float = 0.0
+    risk_flags: list[str] = Field(default_factory=list)
     matched_keywords: list[str] = Field(default_factory=list)
     timing_window: str = ""
     frequency_per_day: int = Field(default=1, ge=1, le=24)

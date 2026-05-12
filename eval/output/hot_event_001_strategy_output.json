@@ -1,0 +1,1685 @@
+{
+  "generated_at": "2026-05-11T13:07:49.227612+00:00",
+  "source_event": {
+    "event_id": "hot_event_001",
+    "domain": "military",
+    "event_title": "红海航运安全形势持续紧张，多国加强护航协调",
+    "event_summary": "红海及周边海域航运风险上升，部分国家和航运企业调整航线、保险和护航安排。",
+    "opinion_variant_count": 10,
+    "opinion_variants": [
+      "红海这轮航运紧张还没降温，多国开始加大护航协作，后续海运成本可能继续受影响。",
+      "现在红海航线的安全问题已经不只是军事新闻了，保险费、绕航时间和全球物流都会被牵动。",
+      "多国加强护航说明局势仍然敏感，短期内航运公司大概率不会轻易恢复原来的路线。",
+      "红海局势一紧张，最先反映出来的就是航运价格和交付周期，外贸企业要提前做预案。",
+      "这次护航协调升级，本质上是各方在给关键能源和商品运输通道上保险。",
+      "别只看军舰出动，红海风险背后影响的是全球供应链稳定性。",
+      "航运企业绕行好望角不是小事，时间和燃油成本都会传导到商品价格里。",
+      "红海安全问题如果继续拖下去，区域冲突外溢对国际贸易的冲击会更明显。",
+      "多国护航只能降低风险，真正让航线恢复正常还得看地区局势能不能缓和。",
+      "红海航运紧张再次说明，关键海上通道的安全已经是全球经济问题。"
+    ]
+  },
+  "parsed_event": {
+    "event_id": "hot_event_001",
+    "product_name": "abc_reading",
+    "event_title": "红海航运安全形势持续紧张，多国加强护航协调",
+    "event_description": "红海航运安全形势持续紧张，多国加强护航协调\n红海及周边海域航运风险上升，部分国家和航运企业调整航线、保险和护航安排。\n热点叙述变体:\n1. 红海这轮航运紧张还没降温，多国开始加大护航协作，后续海运成本可能继续受影响。\n2. 现在红海航线的安全问题已经不只是军事新闻了，保险费、绕航时间和全球物流都会被牵动。\n3. 多国加强护航说明局势仍然敏感，短期内航运公司大概率不会轻易恢复原来的路线。\n4. 红海局势一紧张，最先反映出来的就是航运价格和交付周期，外贸企业要提前做预案。\n5. 这次护航协调升级，本质上是各方在给关键能源和商品运输通道上保险。\n6. 别只看军舰出动，红海风险背后影响的是全球供应链稳定性。\n7. 航运企业绕行好望角不是小事，时间和燃油成本都会传导到商品价格里。\n8. 红海安全问题如果继续拖下去，区域冲突外溢对国际贸易的冲击会更明显。\n9. 多国护航只能降低风险，真正让航线恢复正常还得看地区局势能不能缓和。\n10. 红海航运紧张再次说明，关键海上通道的安全已经是全球经济问题。",
+    "target_goal": "awareness",
+    "event_type": "general_influence_event",
+    "target_audience": [
+      "general_public",
+      "military"
+    ],
+    "extracted_keywords": [
+      "稳定",
+      "general_public",
+      "military"
+    ],
+    "constraints": {
+      "risk_level": "high",
+      "max_selected_nodes": 5,
+      "max_frequency_per_day": 3,
+      "campaign_window_hours": 24,
+      "allowed_platforms": [
+        "weibo_simulated"
+      ]
+    },
+    "parser_name": "rule_based_v1",
+    "reasoning": [
+      "event_type=general_influence_event",
+      "matched_keywords=none",
+      "target_goal=explicit:awareness",
+      "target_audience=explicit:general_public,military",
+      "target_audience=inferred:general_public,military",
+      "risk_level=high"
+    ]
+  },
+  "summary": {
+    "event_id": "hot_event_001",
+    "event_type": "general_influence_event",
+    "selected_count": 5,
+    "fallback_count": 10,
+    "primary_platform": "weibo_simulated",
+    "estimated_total_dispatches": 6,
+    "review_required": true,
+    "avg_selected_final_score": 0.613851
+  },
+  "five_dimensions": {
+    "distribution_object": {
+      "dimension_name": "分发对象",
+      "target_object": [
+        "泛公众",
+        "military"
+      ],
+      "selected_digital_human_ids": [
+        "106529",
+        "104816",
+        "89630",
+        "99077",
+        "81584"
+      ],
+      "role_distribution": {
+        "core_publish_node": 1,
+        "interaction_response_node": 1,
+        "amplification_node": 3
+      }
+    },
+    "time_arrangement": {
+      "dimension_name": "时间安排",
+      "time_plan": {
+        "stage_1_launch": "T0 - T+2h",
+        "stage_2_engage": "T+2h - T+8h",
+        "stage_2_support": "T+2h - T+8h",
+        "stage_3_amplify": "T+8h - T+24h"
+      },
+      "stage_plans": [
+        {
+          "stage_name": "stage_1_launch",
+          "stage_label": "启动期",
+          "time_window": "T0 - T+2h",
+          "objective": "建立首轮叙事锚点并完成首发触达。",
+          "node_count": 1,
+          "node_ids": [
+            "106529"
+          ],
+          "selected_roles": [
+            "core_publish_node"
+          ],
+          "content_focus": "首发主信息、核心观点和初始讨论锚点。",
+          "success_signal": "核心信息被稳定引用，首轮触达完成。"
+        },
+        {
+          "stage_name": "stage_2_engage",
+          "stage_label": "互动期",
+          "time_window": "T+2h - T+8h",
+          "objective": "承接评论与问答，提升讨论深度与反馈回收。",
+          "node_count": 1,
+          "node_ids": [
+            "104816"
+          ],
+          "selected_roles": [
+            "interaction_response_node"
+          ],
+          "content_focus": "回收互动反馈、引导追问并补充案例。",
+          "success_signal": "评论、问答或讨论深度明显提升。"
+        },
+        {
+          "stage_name": "stage_3_amplify",
+          "stage_label": "扩散期",
+          "time_window": "T+8h - T+24h",
+          "objective": "推动二次传播，扩展外圈覆盖范围。",
+          "node_count": 3,
+          "node_ids": [
+            "89630",
+            "99077",
+            "81584"
+          ],
+          "selected_roles": [
+            "amplification_node"
+          ],
+          "content_focus": "提炼亮点并推动二次传播，扩大外圈触达。",
+          "success_signal": "二次扩散持续发生，外圈用户开始跟进。"
+        }
+      ]
+    },
+    "frequency_arrangement": {
+      "dimension_name": "频率安排",
+      "frequency_plan": {
+        "global_cap_per_day": 3,
+        "core_publish_node_per_day": 1,
+        "interaction_response_node_per_day": 2,
+        "amplification_node_per_day": 1,
+        "support_node_per_day": 1,
+        "notes": [
+          "single_node_daily_cap<=3",
+          "avoid_identical_messages_in_short_window",
+          "high_risk_event_reduce_clustered_dispatch"
+        ]
+      },
+      "estimated_total_dispatches": 6
+    },
+    "platform_arrangement": {
+      "dimension_name": "平台安排",
+      "platform_plan": {
+        "primary_platform": "weibo_simulated",
+        "secondary_platforms": [],
+        "execution_mode": "single_platform_simulated",
+        "coordination_notes": [
+          "keep_core_message_consistent_across_nodes",
+          "current_baseline_focuses_on_single_platform_execution"
+        ]
+      }
+    },
+    "content_arrangement": {
+      "dimension_name": "内容安排",
+      "content_plan": {
+        "core_publish_node": "主信息发布型内容，先完成首轮触达和统一表达。",
+        "interaction_response_node": "轻量互动跟进内容，用于承接问题和提升停留讨论。",
+        "amplification_node": "摘要转述型内容，用于扩大外圈覆盖。",
+        "support_node": "辅助补充内容，用于增强信息完整度。",
+        "general_guardrails": [
+          "避免高频重复表达",
+          "避免同一时间窗口内节点内容完全同质化",
+          "确保核心事实和口径一致",
+          "避免使用情绪化、对立化或未经证实的表述",
+          "放大节点仅做事实摘要，不追加推测性扩写"
+        ]
+      },
+      "content_guardrails": [
+        "避免高频重复表达",
+        "避免同一时间窗口内节点内容完全同质化",
+        "确保核心事实和口径一致",
+        "避免使用情绪化、对立化或未经证实的表述",
+        "放大节点仅做事实摘要，不追加推测性扩写"
+      ]
+    }
+  },
+  "selected_digital_humans": [
+    {
+      "user_id": "106529",
+      "user_name": "user_106529",
+      "selected_role": "core_publish_node",
+      "selection_bucket": "primary",
+      "selection_rank": 1,
+      "dispatch_stage": "stage_1_launch",
+      "dispatch_priority": "p1",
+      "timing_window": "T0 - T+2h",
+      "frequency_per_day": 1,
+      "recommended_action": "发布首条核心内容，统一事件框架并设置讨论锚点。",
+      "suggested_content_style": "主信息发布型内容，先完成首轮触达和统一表达。",
+      "selection_explanation": [
+        "high_influence",
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.66499,
+        "influence_score": 0.688165,
+        "diffusion_score": 0.630075,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 2122296,
+        "friend_count": 3137,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "104816",
+      "user_name": "user_104816",
+      "selected_role": "interaction_response_node",
+      "selection_bucket": "primary",
+      "selection_rank": 2,
+      "dispatch_stage": "stage_2_engage",
+      "dispatch_priority": "p2",
+      "timing_window": "T+2h - T+8h",
+      "frequency_per_day": 2,
+      "recommended_action": "承接评论区问题，组织答疑、讨论与反馈回收。",
+      "suggested_content_style": "轻量互动跟进内容，用于承接问题和提升停留讨论。",
+      "selection_explanation": [
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=interaction_response",
+        "final_score=0.534",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.533844,
+        "influence_score": 0.471003,
+        "diffusion_score": 0.433017,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.9375,
+        "follower_count": 21010,
+        "friend_count": 258,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "89630",
+      "user_name": "user_89630",
+      "selected_role": "amplification_node",
+      "selection_bucket": "primary",
+      "selection_rank": 3,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.637803,
+        "influence_score": 0.587636,
+        "diffusion_score": 0.653881,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 77908,
+        "friend_count": 19819,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "99077",
+      "user_name": "user_99077",
+      "selected_role": "amplification_node",
+      "selection_bucket": "primary",
+      "selection_rank": 4,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.618896,
+        "influence_score": 0.545045,
+        "diffusion_score": 0.632188,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 26527,
+        "friend_count": 18902,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "81584",
+      "user_name": "user_81584",
+      "selected_role": "amplification_node",
+      "selection_bucket": "primary",
+      "selection_rank": 5,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.613722,
+        "influence_score": 0.588679,
+        "diffusion_score": 0.548849,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 233699,
+        "friend_count": 1266,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    }
+  ],
+  "fallback_digital_humans": [
+    {
+      "user_id": "83619",
+      "user_name": "user_83619",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 1,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.594103,
+        "influence_score": 0.525571,
+        "diffusion_score": 0.552816,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 32817,
+        "friend_count": 3026,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "162909",
+      "user_name": "user_162909",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 2,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.592666,
+        "influence_score": 0.555943,
+        "diffusion_score": 0.504116,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 135766,
+        "friend_count": 587,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "84123",
+      "user_name": "user_84123",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 3,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.591209,
+        "influence_score": 0.521383,
+        "diffusion_score": 0.546233,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 30883,
+        "friend_count": 2682,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "119241",
+      "user_name": "user_119241",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 4,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.584678,
+        "influence_score": 0.467641,
+        "diffusion_score": 0.593378,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 3720,
+        "friend_count": 17623,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "82853",
+      "user_name": "user_82853",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 5,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.583869,
+        "influence_score": 0.550272,
+        "diffusion_score": 0.474215,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 154750,
+        "friend_count": 288,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "83931",
+      "user_name": "user_83931",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 6,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.575192,
+        "influence_score": 0.488925,
+        "diffusion_score": 0.522783,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 14576,
+        "friend_count": 2160,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "84234",
+      "user_name": "user_84234",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 7,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.573843,
+        "influence_score": 0.48543,
+        "diffusion_score": 0.521873,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 13225,
+        "friend_count": 2201,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "83131",
+      "user_name": "user_83131",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 8,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.566515,
+        "influence_score": 0.491926,
+        "diffusion_score": 0.481259,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "follower_count": 24351,
+        "friend_count": 705,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "103135",
+      "user_name": "user_103135",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 9,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.565267,
+        "influence_score": 0.504107,
+        "diffusion_score": 0.523321,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.9375,
+        "follower_count": 23023,
+        "friend_count": 1821,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    },
+    {
+      "user_id": "118364",
+      "user_name": "user_118364",
+      "selected_role": "amplification_node",
+      "selection_bucket": "fallback",
+      "selection_rank": 10,
+      "dispatch_stage": "stage_3_amplify",
+      "dispatch_priority": "p1",
+      "timing_window": "T+8h - T+24h",
+      "frequency_per_day": 1,
+      "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+      "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+      "selection_explanation": [
+        "strong_diffusion",
+        "good_topic_match",
+        "stable_profile",
+        "role_hint=amplification",
+        "matched_keywords=general_public,military",
+        "risk_level=low"
+      ],
+      "matched_keywords": [
+        "general_public",
+        "military"
+      ],
+      "risk_level": "low",
+      "risk_flags": [
+        "isolated_node"
+      ],
+      "manual_review_required": false,
+      "metrics": {
+        "final_score": 0.563553,
+        "influence_score": 0.569863,
+        "diffusion_score": 0.554447,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.8125,
+        "follower_count": 124449,
+        "friend_count": 1842,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0
+      }
+    }
+  ],
+  "risk_control": {
+    "risk_level": "high",
+    "review_required": true,
+    "manual_review_node_ids": [],
+    "fallback_trigger": [
+      "stage_1_launch 未按计划执行时，启用前 1-2 个 fallback 节点补位",
+      "评论区出现明显负向升级时，暂停 amplification 节点并回到 interaction_response 节点"
+    ],
+    "notes": [
+      "事件风险等级=high",
+      "避免同一批节点在短时间内重复触发相同内容",
+      "优先观察 stage_1_launch 的首轮反馈，再决定是否扩大扩散范围",
+      "高风险事件建议先以核心发布与互动回应为主，放大节点从严控制",
+      "已准备 10 个备选节点用于替换或补位"
+    ]
+  },
+  "explainability": [
+    "本次策略为事件 hot_event_001 选出 5 个主选节点和 10 个备选节点。",
+    "角色分布为 core_publish_node=1, interaction_response_node=1, amplification_node=3，用于覆盖首发、互动承接和二次扩散三个环节。",
+    "主平台为 weibo_simulated，传播窗口为 24 小时。",
+    "目标圈层聚焦于 泛公众, military。",
+    "当前事件风险等级为 high，人工复核需求=true。",
+    "主选节点的平均 final_score=0.614。"
+  ],
+  "raw_strategy_result": {
+    "event": {
+      "event_id": "hot_event_001",
+      "product_name": "abc_reading",
+      "event_title": "红海航运安全形势持续紧张，多国加强护航协调",
+      "event_description": "红海航运安全形势持续紧张，多国加强护航协调\n红海及周边海域航运风险上升，部分国家和航运企业调整航线、保险和护航安排。\n热点叙述变体:\n1. 红海这轮航运紧张还没降温，多国开始加大护航协作，后续海运成本可能继续受影响。\n2. 现在红海航线的安全问题已经不只是军事新闻了，保险费、绕航时间和全球物流都会被牵动。\n3. 多国加强护航说明局势仍然敏感，短期内航运公司大概率不会轻易恢复原来的路线。\n4. 红海局势一紧张，最先反映出来的就是航运价格和交付周期，外贸企业要提前做预案。\n5. 这次护航协调升级，本质上是各方在给关键能源和商品运输通道上保险。\n6. 别只看军舰出动，红海风险背后影响的是全球供应链稳定性。\n7. 航运企业绕行好望角不是小事，时间和燃油成本都会传导到商品价格里。\n8. 红海安全问题如果继续拖下去，区域冲突外溢对国际贸易的冲击会更明显。\n9. 多国护航只能降低风险，真正让航线恢复正常还得看地区局势能不能缓和。\n10. 红海航运紧张再次说明，关键海上通道的安全已经是全球经济问题。",
+      "target_goal": "awareness",
+      "event_type": "general_influence_event",
+      "target_audience": [
+        "general_public",
+        "military"
+      ],
+      "extracted_keywords": [
+        "稳定",
+        "general_public",
+        "military"
+      ],
+      "constraints": {
+        "risk_level": "high",
+        "max_selected_nodes": 5,
+        "max_frequency_per_day": 3,
+        "campaign_window_hours": 24,
+        "allowed_platforms": [
+          "weibo_simulated"
+        ]
+      },
+      "parser_name": "rule_based_v1",
+      "reasoning": [
+        "event_type=general_influence_event",
+        "matched_keywords=none",
+        "target_goal=explicit:awareness",
+        "target_audience=explicit:general_public,military",
+        "target_audience=inferred:general_public,military",
+        "risk_level=high"
+      ]
+    },
+    "product_context": {
+      "product_name": "abc_reading",
+      "domain": "linguistics",
+      "ads": "【ABCreading直播福利专场】\n🔥SVIP 3年卡独家活动，到手4年！\n🏆分级阅读TOP1， 超过3000万中国孩子都在用的APP\n🌟海淀四大鸡娃神器，分性翁级阅读百科全书，学英语必备",
+      "influencer_ids": [
+        "201468",
+        "161674",
+        "201561",
+        "201458"
+      ]
+    },
+    "selection_summary": {
+      "event_id": "hot_event_001",
+      "event_type": "general_influence_event",
+      "max_selected_nodes": 5,
+      "selected_count": 5,
+      "fallback_count": 10,
+      "selected_role_distribution": {
+        "core_publish_node": 1,
+        "interaction_response_node": 1,
+        "amplification_node": 3
+      },
+      "selected_stage_distribution": {
+        "stage_1_launch": 1,
+        "stage_2_engage": 1,
+        "stage_3_amplify": 3
+      },
+      "avg_selected_final_score": 0.613851
+    },
+    "summary": {
+      "event_id": "hot_event_001",
+      "event_type": "general_influence_event",
+      "selected_count": 5,
+      "fallback_count": 10,
+      "primary_platform": "weibo_simulated",
+      "estimated_total_dispatches": 6,
+      "review_required": true,
+      "avg_selected_final_score": 0.613851
+    },
+    "stage_plans": [
+      {
+        "stage_name": "stage_1_launch",
+        "stage_label": "启动期",
+        "time_window": "T0 - T+2h",
+        "objective": "建立首轮叙事锚点并完成首发触达。",
+        "node_count": 1,
+        "node_ids": [
+          "106529"
+        ],
+        "selected_roles": [
+          "core_publish_node"
+        ],
+        "content_focus": "首发主信息、核心观点和初始讨论锚点。",
+        "success_signal": "核心信息被稳定引用，首轮触达完成。"
+      },
+      {
+        "stage_name": "stage_2_engage",
+        "stage_label": "互动期",
+        "time_window": "T+2h - T+8h",
+        "objective": "承接评论与问答，提升讨论深度与反馈回收。",
+        "node_count": 1,
+        "node_ids": [
+          "104816"
+        ],
+        "selected_roles": [
+          "interaction_response_node"
+        ],
+        "content_focus": "回收互动反馈、引导追问并补充案例。",
+        "success_signal": "评论、问答或讨论深度明显提升。"
+      },
+      {
+        "stage_name": "stage_3_amplify",
+        "stage_label": "扩散期",
+        "time_window": "T+8h - T+24h",
+        "objective": "推动二次传播，扩展外圈覆盖范围。",
+        "node_count": 3,
+        "node_ids": [
+          "89630",
+          "99077",
+          "81584"
+        ],
+        "selected_roles": [
+          "amplification_node"
+        ],
+        "content_focus": "提炼亮点并推动二次传播，扩大外圈触达。",
+        "success_signal": "二次扩散持续发生，外圈用户开始跟进。"
+      }
+    ],
+    "selected_nodes": [
+      {
+        "user_id": "106529",
+        "user_name": "user_106529",
+        "selection_rank": 1,
+        "selection_bucket": "primary",
+        "selected_role": "core_publish_node",
+        "dispatch_stage": "stage_1_launch",
+        "dispatch_priority": "p1",
+        "final_score": 0.66499,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 2122296,
+        "friend_count": 3137,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.688165,
+        "diffusion_score": 0.630075,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T0 - T+2h",
+        "frequency_per_day": 1,
+        "recommended_action": "发布首条核心内容，统一事件框架并设置讨论锚点。",
+        "suggested_content_style": "主信息发布型内容，先完成首轮触达和统一表达。",
+        "rationale": [
+          "high_influence",
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "104816",
+        "user_name": "user_104816",
+        "selection_rank": 2,
+        "selection_bucket": "primary",
+        "selected_role": "interaction_response_node",
+        "dispatch_stage": "stage_2_engage",
+        "dispatch_priority": "p2",
+        "final_score": 0.533844,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 21010,
+        "friend_count": 258,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.471003,
+        "diffusion_score": 0.433017,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.9375,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+2h - T+8h",
+        "frequency_per_day": 2,
+        "recommended_action": "承接评论区问题，组织答疑、讨论与反馈回收。",
+        "suggested_content_style": "轻量互动跟进内容，用于承接问题和提升停留讨论。",
+        "rationale": [
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=interaction_response",
+          "final_score=0.534",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "89630",
+        "user_name": "user_89630",
+        "selection_rank": 3,
+        "selection_bucket": "primary",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.637803,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 77908,
+        "friend_count": 19819,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.587636,
+        "diffusion_score": 0.653881,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "99077",
+        "user_name": "user_99077",
+        "selection_rank": 4,
+        "selection_bucket": "primary",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.618896,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 26527,
+        "friend_count": 18902,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.545045,
+        "diffusion_score": 0.632188,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "81584",
+        "user_name": "user_81584",
+        "selection_rank": 5,
+        "selection_bucket": "primary",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.613722,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 233699,
+        "friend_count": 1266,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.588679,
+        "diffusion_score": 0.548849,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      }
+    ],
+    "fallback_nodes": [
+      {
+        "user_id": "83619",
+        "user_name": "user_83619",
+        "selection_rank": 1,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.594103,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 32817,
+        "friend_count": 3026,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.525571,
+        "diffusion_score": 0.552816,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "162909",
+        "user_name": "user_162909",
+        "selection_rank": 2,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.592666,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 135766,
+        "friend_count": 587,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.555943,
+        "diffusion_score": 0.504116,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "84123",
+        "user_name": "user_84123",
+        "selection_rank": 3,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.591209,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 30883,
+        "friend_count": 2682,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.521383,
+        "diffusion_score": 0.546233,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "119241",
+        "user_name": "user_119241",
+        "selection_rank": 4,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.584678,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 3720,
+        "friend_count": 17623,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.467641,
+        "diffusion_score": 0.593378,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "82853",
+        "user_name": "user_82853",
+        "selection_rank": 5,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.583869,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 154750,
+        "friend_count": 288,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.550272,
+        "diffusion_score": 0.474215,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "83931",
+        "user_name": "user_83931",
+        "selection_rank": 6,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.575192,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 14576,
+        "friend_count": 2160,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.488925,
+        "diffusion_score": 0.522783,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "84234",
+        "user_name": "user_84234",
+        "selection_rank": 7,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.573843,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 13225,
+        "friend_count": 2201,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.48543,
+        "diffusion_score": 0.521873,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "83131",
+        "user_name": "user_83131",
+        "selection_rank": 8,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.566515,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 24351,
+        "friend_count": 705,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.491926,
+        "diffusion_score": 0.481259,
+        "topic_match_score": 0.666667,
+        "stability_score": 1.0,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "103135",
+        "user_name": "user_103135",
+        "selection_rank": 9,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.565267,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 23023,
+        "friend_count": 1821,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.504107,
+        "diffusion_score": 0.523321,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.9375,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      },
+      {
+        "user_id": "118364",
+        "user_name": "user_118364",
+        "selection_rank": 10,
+        "selection_bucket": "fallback",
+        "selected_role": "amplification_node",
+        "dispatch_stage": "stage_3_amplify",
+        "dispatch_priority": "p1",
+        "final_score": 0.563553,
+        "risk_level": "low",
+        "manual_review_required": false,
+        "follower_count": 124449,
+        "friend_count": 1842,
+        "neighbor_count": 0,
+        "mutual_neighbor_count": 0,
+        "received_interaction_count": 0,
+        "made_interaction_count": 0,
+        "influence_score": 0.569863,
+        "diffusion_score": 0.554447,
+        "topic_match_score": 0.666667,
+        "stability_score": 0.8125,
+        "risk_flags": [
+          "isolated_node"
+        ],
+        "matched_keywords": [
+          "general_public",
+          "military"
+        ],
+        "timing_window": "T+8h - T+24h",
+        "frequency_per_day": 1,
+        "recommended_action": "作为备选节点待命：转述核心信息并扩展到相邻圈层，完成二次扩散。",
+        "suggested_content_style": "摘要转述型内容，用于扩大外圈覆盖。",
+        "rationale": [
+          "strong_diffusion",
+          "good_topic_match",
+          "stable_profile",
+          "role_hint=amplification",
+          "matched_keywords=general_public,military",
+          "risk_level=low"
+        ]
+      }
+    ],
+    "strategy": {
+      "target_object": [
+        "泛公众",
+        "military"
+      ],
+      "objective": "扩大事件触达范围并建立基础认知。",
+      "time_plan": {
+        "stage_1_launch": "T0 - T+2h",
+        "stage_2_engage": "T+2h - T+8h",
+        "stage_2_support": "T+2h - T+8h",
+        "stage_3_amplify": "T+8h - T+24h"
+      },
+      "frequency_plan": {
+        "global_cap_per_day": 3,
+        "core_publish_node_per_day": 1,
+        "interaction_response_node_per_day": 2,
+        "amplification_node_per_day": 1,
+        "support_node_per_day": 1,
+        "notes": [
+          "single_node_daily_cap<=3",
+          "avoid_identical_messages_in_short_window",
+          "high_risk_event_reduce_clustered_dispatch"
+        ]
+      },
+      "platform_plan": {
+        "primary_platform": "weibo_simulated",
+        "secondary_platforms": [],
+        "execution_mode": "single_platform_simulated",
+        "coordination_notes": [
+          "keep_core_message_consistent_across_nodes",
+          "current_baseline_focuses_on_single_platform_execution"
+        ]
+      },
+      "content_plan": {
+        "core_publish_node": "主信息发布型内容，先完成首轮触达和统一表达。",
+        "interaction_response_node": "轻量互动跟进内容，用于承接问题和提升停留讨论。",
+        "amplification_node": "摘要转述型内容，用于扩大外圈覆盖。",
+        "support_node": "辅助补充内容，用于增强信息完整度。",
+        "general_guardrails": [
+          "避免高频重复表达",
+          "避免同一时间窗口内节点内容完全同质化",
+          "确保核心事实和口径一致",
+          "避免使用情绪化、对立化或未经证实的表述",
+          "放大节点仅做事实摘要，不追加推测性扩写"
+        ]
+      },
+      "risk_control": {
+        "risk_level": "high",
+        "review_required": true,
+        "manual_review_node_ids": [],
+        "fallback_trigger": [
+          "stage_1_launch 未按计划执行时，启用前 1-2 个 fallback 节点补位",
+          "评论区出现明显负向升级时，暂停 amplification 节点并回到 interaction_response 节点"
+        ],
+        "notes": [
+          "事件风险等级=high",
+          "避免同一批节点在短时间内重复触发相同内容",
+          "优先观察 stage_1_launch 的首轮反馈，再决定是否扩大扩散范围",
+          "高风险事件建议先以核心发布与互动回应为主，放大节点从严控制",
+          "已准备 10 个备选节点用于替换或补位"
+        ]
+      },
+      "explainability": [
+        "本次策略为事件 hot_event_001 选出 5 个主选节点和 10 个备选节点。",
+        "角色分布为 core_publish_node=1, interaction_response_node=1, amplification_node=3，用于覆盖首发、互动承接和二次扩散三个环节。",
+        "主平台为 weibo_simulated，传播窗口为 24 小时。",
+        "目标圈层聚焦于 泛公众, military。",
+        "当前事件风险等级为 high，人工复核需求=true。",
+        "主选节点的平均 final_score=0.614。"
+      ]
+    }
+  }
+}
