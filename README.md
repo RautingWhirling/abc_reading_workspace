@@ -93,10 +93,14 @@ python main.py --event-file samples\event.json
 运行 `eval` 热点事件样例，并在 `eval/output` 下生成包含五个维度和数字人选择说明的结果：
 
 ```powershell
-python run_eval.py --event-id hot_event_001
+python run_eval.py
 ```
 
-不指定 `--event-id` 时默认读取 `eval/hot_event_opinion_variants.json` 的第一条热点数据；每条热点数据中的 `opinion_variants` 会作为 10 条不同叙述一起写入事件描述。
+不指定 `--event-id` 时默认读取 `eval/hot_event_opinion_variants.json` 的前 10 条热点数据，并分别写入 `eval/output/<event_id>_strategy_output.json`；每条热点数据中的 `opinion_variants` 会作为 10 条不同叙述一起写入事件描述。只运行单条事件时可以指定：
+
+```powershell
+python run_eval.py --event-id hot_event_001
+```
 
 Windows 备注：
 
@@ -113,6 +117,7 @@ Windows 备注：
 - `--campaign-window-hours`：覆盖传播窗口
 - `--allowed-platforms`：覆盖平台列表
 - `--profile-limit`：仅加载前 N 个 profile 便于调试
+- `--event-limit`：未指定 `--event-id` 时运行前 N 条热点事件，默认 10
 - `--output`：指定输出 JSON 路径
 
 ## 输出结果

@@ -10,7 +10,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from influence_strategy.eval_hot_events import run_hot_event_evaluation
+from influence_strategy.eval_hot_events import run_hot_event_evaluations
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -32,7 +32,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--event-id",
         type=str,
-        help="指定要运行的热点事件 ID；不指定时默认使用输入文件第一条。",
+        help="指定要运行的热点事件 ID；指定后只运行该事件。",
+    )
+    parser.add_argument(
+        "--event-limit",
+        type=int,
+        default=10,
+        help="未指定 --event-id 时运行输入文件前 N 条热点事件，默认 10。",
     )
     parser.add_argument(
         "--output-dir",
@@ -91,11 +97,12 @@ def main() -> int:
             if item.strip()
         ]
 
-    output_path, payload = run_hot_event_evaluation(
+    results = run_hot_event_evaluations(
         workspace_root=args.workspace_root.resolve(),
         input_path=args.input.resolve(),
         output_dir=args.output_dir.resolve(),
         event_id=args.event_id,
+        event_limit=args.event_limit,
         profile_limit=args.profile_limit,
         max_selected_nodes=args.max_selected_nodes,
         risk_level=args.risk_level,
@@ -106,10 +113,16 @@ def main() -> int:
     )
 
     console_summary = {
-        "output_path": str(output_path),
-        "event_name": payload["事件名称"],
-        "selected_digital_human_ids": payload["选取数字人id组"],
-        "selected_digital_human_count": len(payload["选取数字人id组"]),
+        "event_count": len(results),
+        "outputs": [
+            {
+                "output_path": str(output_path),
+                "event_name": payload["事件名称"],
+                "selected_digital_human_ids": payload["选取数字人id组"],
+                "selected_digital_human_count": len(payload["选取数字人id组"]),
+            }
+            for output_path, payload in results
+        ],
     }
     print(json.dumps(console_summary, ensure_ascii=True, indent=2))
     return 0

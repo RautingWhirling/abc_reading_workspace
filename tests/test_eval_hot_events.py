@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from influence_strategy.eval_hot_events import (
     hot_event_to_pipeline_payload,
     run_hot_event_evaluation,
+    run_hot_event_evaluations,
 )
 
 
@@ -134,6 +135,61 @@ class EvalHotEventsTest(unittest.TestCase):
             self.assertEqual(first_human["目标受众"]["目标群体画像"], f"LLM生成目标群体画像-{first_human_id}")
             self.assertEqual(first_human["目标受众"]["目标群体交互策略"], f"LLM生成目标群体交互策略-{first_human_id}")
             self.assertEqual(first_human["与其他数字人互动策略"]["互动策略"], f"LLM生成互动策略-{first_human_id}")
+
+    def test_run_hot_event_evaluations_writes_first_n_events(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_minimal_workspace(root)
+
+            eval_dir = root / "eval"
+            eval_dir.mkdir(parents=True)
+            input_path = eval_dir / "hot_event_opinion_variants.json"
+            input_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "event_id": f"hot_event_eval_{index:03d}",
+                            "domain": "technology",
+                            "event_title": f"批量测试事件 {index}",
+                            "event_summary": "热点事件批量评测。",
+                            "target": "测试批量输出。",
+                            "opinion_variants": [
+                                f"批量叙述 {variant_index}"
+                                for variant_index in range(1, 11)
+                            ],
+                        }
+                        for index in range(1, 4)
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            results = run_hot_event_evaluations(
+                workspace_root=root,
+                input_path=input_path,
+                output_dir=eval_dir / "output",
+                event_limit=2,
+                use_llm=False,
+            )
+
+            self.assertEqual(len(results), 2)
+            self.assertEqual(
+                [output_path.name for output_path, _payload in results],
+                [
+                    "hot_event_eval_001_strategy_output.json",
+                    "hot_event_eval_002_strategy_output.json",
+                ],
+            )
+            self.assertTrue(
+                (eval_dir / "output" / "hot_event_eval_001_strategy_output.json").exists()
+            )
+            self.assertTrue(
+                (eval_dir / "output" / "hot_event_eval_002_strategy_output.json").exists()
+            )
+            self.assertFalse(
+                (eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists()
+            )
 
     def _write_minimal_workspace(self, root: Path) -> None:
         raw_dir = root / "data" / "raw"

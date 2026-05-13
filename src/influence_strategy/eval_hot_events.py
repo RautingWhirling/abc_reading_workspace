@@ -44,6 +44,23 @@ def select_hot_event(
     raise ValueError(f"Hot event not found: {event_id}")
 
 
+def select_hot_events(
+    events: list[dict[str, Any]],
+    *,
+    event_id: str | None = None,
+    event_limit: int | None = 10,
+) -> list[dict[str, Any]]:
+    if event_id is not None:
+        return [select_hot_event(events, event_id=event_id)]
+    if not events:
+        raise ValueError("Hot event eval input is empty.")
+    if event_limit is None:
+        return events
+    if event_limit < 1:
+        raise ValueError("event_limit must be at least 1.")
+    return events[:event_limit]
+
+
 def hot_event_to_pipeline_payload(
     hot_event: dict[str, Any],
     *,
@@ -108,9 +125,38 @@ def run_hot_event_evaluation(
     use_llm: bool = True,
     llm_client: Any | None = None,
 ) -> tuple[Path, dict[str, Any]]:
-    root = Path(workspace_root)
     events = load_hot_events(input_path)
     hot_event = select_hot_event(events, event_id=event_id)
+    return _run_hot_event_evaluation(
+        workspace_root=workspace_root,
+        output_dir=output_dir,
+        hot_event=hot_event,
+        profile_limit=profile_limit,
+        max_selected_nodes=max_selected_nodes,
+        risk_level=risk_level,
+        campaign_window_hours=campaign_window_hours,
+        max_frequency_per_day=max_frequency_per_day,
+        allowed_platforms=allowed_platforms,
+        use_llm=use_llm,
+        llm_client=llm_client,
+    )
+
+
+def _run_hot_event_evaluation(
+    *,
+    workspace_root: str | Path,
+    output_dir: str | Path | None = None,
+    hot_event: dict[str, Any],
+    profile_limit: int | None = None,
+    max_selected_nodes: int = 5,
+    risk_level: str | None = None,
+    campaign_window_hours: int = 24,
+    max_frequency_per_day: int = 3,
+    allowed_platforms: list[str] | None = None,
+    use_llm: bool = True,
+    llm_client: Any | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    root = Path(workspace_root)
     pipeline_payload = hot_event_to_pipeline_payload(
         hot_event,
         max_selected_nodes=max_selected_nodes,
@@ -141,6 +187,47 @@ def run_hot_event_evaluation(
         encoding="utf-8",
     )
     return output_path, output_payload
+
+
+def run_hot_event_evaluations(
+    *,
+    workspace_root: str | Path,
+    input_path: str | Path,
+    output_dir: str | Path | None = None,
+    event_id: str | None = None,
+    event_limit: int | None = 10,
+    profile_limit: int | None = None,
+    max_selected_nodes: int = 5,
+    risk_level: str | None = None,
+    campaign_window_hours: int = 24,
+    max_frequency_per_day: int = 3,
+    allowed_platforms: list[str] | None = None,
+    use_llm: bool = True,
+    llm_client: Any | None = None,
+) -> list[tuple[Path, dict[str, Any]]]:
+    events = load_hot_events(input_path)
+    selected_events = select_hot_events(
+        events,
+        event_id=event_id,
+        event_limit=event_limit,
+    )
+    results: list[tuple[Path, dict[str, Any]]] = []
+    for hot_event in selected_events:
+        output_path, output_payload = _run_hot_event_evaluation(
+            workspace_root=workspace_root,
+            output_dir=output_dir,
+            hot_event=hot_event,
+            profile_limit=profile_limit,
+            max_selected_nodes=max_selected_nodes,
+            risk_level=risk_level,
+            campaign_window_hours=campaign_window_hours,
+            max_frequency_per_day=max_frequency_per_day,
+            allowed_platforms=allowed_platforms,
+            use_llm=use_llm,
+            llm_client=llm_client,
+        )
+        results.append((output_path, output_payload))
+    return results
 
 
 def build_eval_output(
@@ -288,7 +375,12 @@ def _build_llm_node_texts(
 
     result = dict(fallback)
     for node in eligible_nodes:
-        raw_node = llm_nodes.get(node.user_id)
+        raw_node = (
+            llm_nodes.get(node.user_id)
+            or llm_nodes.get(str(node.user_id))
+            or llm_nodes.get(f"数字人id{node.user_id}")
+            or llm_nodes.get(f"数字人ID{node.user_id}")
+        )
         if not isinstance(raw_node, dict):
             continue
         cleaned = _clean_llm_node_fields(raw_node)
@@ -394,7 +486,9 @@ def _llm_prompt(
             "不要写具体发布时间，只使用给定时间阶段。",
             "不要承诺真实平台执行能力。",
             "每个字段使用中文自然语言，长度控制在 1 到 3 句话。",
-            "发帖内容需要体现该数字人的角色差异。",
+            "发帖内容必须结合事件标题、目标、叙述变体和该数字人的 role、recommended_action、content_style_hint 生成。",
+            "每个数字人的四个文案字段都必须互相区分，不能复用同一句模板。",
+            "返回 nodes 对象时，key 必须严格使用节点的 user_id 字符串。",
         ],
         "已评判可接入大模型的数字人节点": nodes_payload,
         "必须返回的 JSON 结构": required_schema,
