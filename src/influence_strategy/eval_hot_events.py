@@ -259,9 +259,9 @@ def build_eval_output(
     variants = _normalize_variants(hot_event.get("opinion_variants", []))
     for node in selected_nodes:
         generated = llm_texts.get(node.user_id, {})
-        output[f"数字人id{node.user_id}"] = {
+        output[_digital_human_output_key(node.user_id)] = {
             "时间阶段": _stage_text(node),
-            "发帖频率": f"每日 {node.frequency_per_day} 次",
+            "发帖频率": _frequency_text(node.frequency_per_day),
             "发帖平台": platform,
             "发帖内容": generated.get("发帖内容") or _post_content_text(
                 node=node,
@@ -378,6 +378,7 @@ def _build_llm_node_texts(
         raw_node = (
             llm_nodes.get(node.user_id)
             or llm_nodes.get(str(node.user_id))
+            or llm_nodes.get(_digital_human_output_key(node.user_id))
             or llm_nodes.get(f"数字人id{node.user_id}")
             or llm_nodes.get(f"数字人ID{node.user_id}")
         )
@@ -440,7 +441,7 @@ def _llm_prompt(
                 "user_id": node.user_id,
                 "role": node.selected_role,
                 "stage": _stage_text(node),
-                "frequency": f"每日 {node.frequency_per_day} 次",
+                "frequency": _frequency_text(node.frequency_per_day),
                 "platform": platform,
                 "other_digital_human_ids": [item for item in selected_ids if item != node.user_id],
                 "recommended_action": node.recommended_action,
@@ -463,7 +464,7 @@ def _llm_prompt(
 
     required_schema = {
         "nodes": {
-            "数字人ID": {
+            "id81584": {
                 "发帖内容": "围绕事件目标生成的具体发帖内容或内容执行说明",
                 "目标群体画像": "说明针对哪些人群",
                 "目标群体交互策略": "说明@哪些粉丝、互动哪些评论、如何回复",
@@ -488,7 +489,8 @@ def _llm_prompt(
             "每个字段使用中文自然语言，长度控制在 1 到 3 句话。",
             "发帖内容必须结合事件标题、目标、叙述变体和该数字人的 role、recommended_action、content_style_hint 生成。",
             "每个数字人的四个文案字段都必须互相区分，不能复用同一句模板。",
-            "返回 nodes 对象时，key 必须严格使用节点的 user_id 字符串。",
+            "返回 nodes 对象时，key 必须严格使用 id + 节点 user_id，例如 id81584；不要使用“数字人id81584”。",
+            "频率字段已由系统提供为 1/day、2/day 这类格式，生成文案时不要改写成“每日一次”。",
         ],
         "已评判可接入大模型的数字人节点": nodes_payload,
         "必须返回的 JSON 结构": required_schema,
@@ -504,6 +506,14 @@ def _clean_llm_node_fields(raw_node: dict[str, Any]) -> dict[str, str]:
         if isinstance(value, str) and value.strip():
             result[field] = value.strip()
     return result
+
+
+def _digital_human_output_key(user_id: str) -> str:
+    return f"id{user_id}"
+
+
+def _frequency_text(frequency_per_day: int) -> str:
+    return f"{frequency_per_day}/day"
 
 
 def _stage_text(node: StrategyNodePlan) -> str:

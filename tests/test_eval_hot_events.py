@@ -85,9 +85,10 @@ class EvalHotEventsTest(unittest.TestCase):
             self.assertGreaterEqual(len(payload["选取数字人id组"]), 1)
 
             first_human_id = payload["选取数字人id组"][0]
-            first_human = payload[f"数字人id{first_human_id}"]
+            first_human = payload[f"id{first_human_id}"]
             self.assertIn("时间阶段", first_human)
             self.assertIn("发帖频率", first_human)
+            self.assertRegex(first_human["发帖频率"], r"^\d+/day$")
             self.assertIn("发帖平台", first_human)
             self.assertIn("发帖内容", first_human)
             self.assertIn("目标受众", first_human)
@@ -130,7 +131,7 @@ class EvalHotEventsTest(unittest.TestCase):
 
             self.assertTrue(output_path.exists())
             first_human_id = payload["选取数字人id组"][0]
-            first_human = payload[f"数字人id{first_human_id}"]
+            first_human = payload[f"id{first_human_id}"]
             self.assertEqual(first_human["发帖内容"], f"LLM生成发帖内容-{first_human_id}")
             self.assertEqual(first_human["目标受众"]["目标群体画像"], f"LLM生成目标群体画像-{first_human_id}")
             self.assertEqual(first_human["目标受众"]["目标群体交互策略"], f"LLM生成目标群体交互策略-{first_human_id}")
