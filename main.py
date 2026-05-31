@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from influence_strategy.pipeline import StrategyPipeline
+from influence_strategy.reporting import render_strategy_markdown, write_markdown
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -57,7 +58,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allowed-platforms",
         type=str,
-        help="允许的平台列表，使用逗号分隔，例如 weibo_simulated,optional_simulated",
+        help="允许的平台列表，使用逗号分隔，例如 weibo_simulated,optional_simulated。",
     )
     parser.add_argument(
         "--profile-limit",
@@ -133,6 +134,10 @@ def default_output_path(workspace_root: Path, event_id: str) -> Path:
     return workspace_root / "outputs" / "strategy" / f"strategy_{event_id}.json"
 
 
+def default_markdown_path(json_path: Path) -> Path:
+    return json_path.with_suffix(".md")
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -163,10 +168,21 @@ def main() -> int:
         workspace_root,
         strategy_result.event.event_id,
     )
+    markdown_path = default_markdown_path(output_path)
     payload = strategy_result.model_dump(mode="json")
     write_json(output_path, payload)
-    print(render_json_for_console(payload))
-    print(f"\n策略结果已保存到: {output_path}")
+    write_markdown(markdown_path, render_strategy_markdown(strategy_result))
+
+    console_summary = {
+        "event_id": strategy_result.event.event_id,
+        "event_title": strategy_result.event.event_title,
+        "selected_count": strategy_result.summary.selected_count,
+        "fallback_count": strategy_result.summary.fallback_count,
+        "primary_platform": strategy_result.summary.primary_platform,
+        "json_output_path": str(output_path),
+        "markdown_output_path": str(markdown_path),
+    }
+    print(render_json_for_console(console_summary))
     return 0
 
 

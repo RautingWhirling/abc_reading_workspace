@@ -19,11 +19,13 @@ class OpenAICompatibleLLMClient:
         api_key: str,
         base_url: str,
         model: str,
+        provider: str = "openai_compatible",
         timeout: int = 60,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.provider = provider
         self.timeout = timeout
 
     @classmethod
@@ -36,31 +38,64 @@ class OpenAICompatibleLLMClient:
         ):
             env_values.update(_read_env_file(path))
 
-        api_key = (
-            env_values.get("OPENAI_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-            or env_values.get("DASHSCOPE_API_KEY")
-            or os.environ.get("DASHSCOPE_API_KEY")
+        provider = (
+            env_values.get("LLM_PROVIDER")
+            or os.environ.get("LLM_PROVIDER")
+            or ""
+        ).strip()
+
+        api_key = _first_non_empty(
+            env_values.get("LLM_API_KEY"),
+            os.environ.get("LLM_API_KEY"),
+            env_values.get("DEEPSEEK_API_KEY"),
+            os.environ.get("DEEPSEEK_API_KEY"),
+            env_values.get("OPENAI_API_KEY"),
+            os.environ.get("OPENAI_API_KEY"),
+            env_values.get("DASHSCOPE_API_KEY"),
+            os.environ.get("DASHSCOPE_API_KEY"),
         )
-        base_url = (
-            env_values.get("OPENAI_BASE_URL")
-            or os.environ.get("OPENAI_BASE_URL")
-            or env_values.get("OPENAI_API_BASE")
-            or os.environ.get("OPENAI_API_BASE")
-            or env_values.get("DASHSCOPE_BASE_URL")
-            or os.environ.get("DASHSCOPE_BASE_URL")
-            or "https://api.openai.com/v1"
+        base_url = _first_non_empty(
+            env_values.get("LLM_BASE_URL"),
+            os.environ.get("LLM_BASE_URL"),
+            env_values.get("DEEPSEEK_BASE_URL"),
+            os.environ.get("DEEPSEEK_BASE_URL"),
+            env_values.get("OPENAI_BASE_URL"),
+            os.environ.get("OPENAI_BASE_URL"),
+            env_values.get("OPENAI_API_BASE"),
+            os.environ.get("OPENAI_API_BASE"),
+            env_values.get("DASHSCOPE_BASE_URL"),
+            os.environ.get("DASHSCOPE_BASE_URL"),
+            "https://api.openai.com/v1",
         )
-        model = (
-            env_values.get("OPENAI_MODEL")
-            or os.environ.get("OPENAI_MODEL")
-            or env_values.get("MODEL_NAME")
-            or os.environ.get("MODEL_NAME")
-            or "gpt-4o-mini"
+        model = _first_non_empty(
+            env_values.get("LLM_MODEL"),
+            os.environ.get("LLM_MODEL"),
+            env_values.get("DEEPSEEK_MODEL"),
+            os.environ.get("DEEPSEEK_MODEL"),
+            env_values.get("OPENAI_MODEL"),
+            os.environ.get("OPENAI_MODEL"),
+            env_values.get("MODEL_NAME"),
+            os.environ.get("MODEL_NAME"),
+            "gpt-4o-mini",
         )
+
         if not api_key:
             return None
-        return cls(api_key=api_key, base_url=base_url, model=model)
+
+        resolved_provider = provider or _infer_provider(base_url=base_url, model=model)
+        return cls(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            provider=resolved_provider,
+        )
+
+    def describe(self) -> dict[str, str]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "base_url": self.base_url,
+        }
 
     def generate_json(
         self,
@@ -139,3 +174,24 @@ def _parse_json_content(content: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise LLMClientError("LLM JSON response must be an object.")
     return parsed
+
+
+def _first_non_empty(*values: str | None) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _infer_provider(*, base_url: str, model: str) -> str:
+    combined = f"{base_url} {model}".lower()
+    if "deepseek" in combined:
+        return "deepseek"
+    if "dashscope" in combined or "qwen" in combined:
+        return "dashscope"
+    if "openai" in combined or "gpt" in combined:
+        return "openai"
+    return "openai_compatible"

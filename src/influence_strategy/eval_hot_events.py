@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from .llm_client import LLMClientError, OpenAICompatibleLLMClient
 from .models import StrategyNodePlan, StrategyResult
 from .pipeline import StrategyPipeline
+from .reporting import render_eval_batch_markdown, render_eval_markdown, write_markdown
+
+SCHEMA_VERSION = "eval_v2"
 
 
 def load_hot_events(input_path: str | Path) -> list[dict[str, Any]]:
@@ -142,6 +146,175 @@ def run_hot_event_evaluation(
     )
 
 
+def run_hot_event_evaluations(
+    *,
+    workspace_root: str | Path,
+    input_path: str | Path,
+    output_dir: str | Path | None = None,
+    event_id: str | None = None,
+    event_limit: int | None = 10,
+    profile_limit: int | None = None,
+    max_selected_nodes: int = 5,
+    risk_level: str | None = None,
+    campaign_window_hours: int = 24,
+    max_frequency_per_day: int = 3,
+    allowed_platforms: list[str] | None = None,
+    use_llm: bool = True,
+    llm_client: Any | None = None,
+) -> list[tuple[Path, dict[str, Any]]]:
+    events = load_hot_events(input_path)
+    selected_events = select_hot_events(
+        events,
+        event_id=event_id,
+        event_limit=event_limit,
+    )
+
+    results: list[tuple[Path, dict[str, Any]]] = []
+    for hot_event in selected_events:
+        output_path, output_payload = _run_hot_event_evaluation(
+            workspace_root=workspace_root,
+            output_dir=output_dir,
+            hot_event=hot_event,
+            profile_limit=profile_limit,
+            max_selected_nodes=max_selected_nodes,
+            risk_level=risk_level,
+            campaign_window_hours=campaign_window_hours,
+            max_frequency_per_day=max_frequency_per_day,
+            allowed_platforms=allowed_platforms,
+            use_llm=use_llm,
+            llm_client=llm_client,
+        )
+        results.append((output_path, output_payload))
+
+    if results:
+        target_dir = Path(output_dir) if output_dir is not None else Path(workspace_root) / "eval" / "output"
+        write_markdown(target_dir / "output.md", render_eval_batch_markdown(results))
+    return results
+
+
+def build_eval_output(
+    *,
+    hot_event: dict[str, Any],
+    strategy_result: StrategyResult,
+    workspace_root: str | Path | None = None,
+    use_llm: bool = True,
+    llm_client: Any | None = None,
+) -> dict[str, Any]:
+    selected_nodes = strategy_result.selected_nodes
+    fallback_nodes = strategy_result.fallback_nodes
+    selected_ids = [node.user_id for node in selected_nodes]
+    platform = strategy_result.strategy.platform_plan.primary_platform
+    target = str(hot_event.get("target") or strategy_result.event.target_goal or "扩大热点信息触达并引导理性讨论。").strip()
+
+    llm_overrides, llm_meta = _build_llm_node_texts(
+        hot_event=hot_event,
+        strategy_result=strategy_result,
+        platform=platform,
+        target=target,
+        workspace_root=workspace_root,
+        use_llm=use_llm,
+        llm_client=llm_client,
+    )
+
+    selected_digital_humans: list[dict[str, Any]] = []
+    variants = _normalize_variants(hot_event.get("opinion_variants", []))
+    for node in selected_nodes:
+        fallback_content = _fallback_content_bundle(
+            hot_event=hot_event,
+            strategy_result=strategy_result,
+            node=node,
+            target=target,
+            variants=variants,
+            selected_ids=selected_ids,
+        )
+        override_content = llm_overrides.get(node.user_id, {})
+        content_output = {
+            "post_content": override_content.get("post_content") or fallback_content["post_content"],
+            "audience_profile": override_content.get("audience_profile") or fallback_content["audience_profile"],
+            "audience_interaction_strategy": override_content.get("audience_interaction_strategy") or fallback_content["audience_interaction_strategy"],
+            "cross_digital_human_ids": fallback_content["cross_digital_human_ids"],
+            "cross_digital_human_strategy": override_content.get("cross_digital_human_strategy") or fallback_content["cross_digital_human_strategy"],
+        }
+        llm_generated_fields = sorted(key for key in override_content.keys() if key in {
+            "post_content",
+            "audience_profile",
+            "audience_interaction_strategy",
+            "cross_digital_human_strategy",
+        })
+
+        selected_digital_humans.append(
+            {
+                **_digital_human_summary(node=node, platform=platform),
+                "content_output": content_output,
+                "content_generation": {
+                    "llm_generated_fields": llm_generated_fields,
+                    "fallback_fields": sorted(
+                        field
+                        for field in (
+                            "post_content",
+                            "audience_profile",
+                            "audience_interaction_strategy",
+                            "cross_digital_human_strategy",
+                        )
+                        if field not in llm_generated_fields
+                    ),
+                },
+            }
+        )
+
+    fallback_digital_humans = [
+        _digital_human_summary(node=node, platform=platform)
+        for node in fallback_nodes
+    ]
+
+    summary = {
+        "event_id": strategy_result.event.event_id,
+        "event_title": str(hot_event.get("event_title") or strategy_result.event.event_title),
+        "event_type": strategy_result.event.event_type,
+        "risk_level": strategy_result.strategy.risk_control.risk_level,
+        "primary_platform": platform,
+        "campaign_window_hours": strategy_result.event.constraints.campaign_window_hours,
+        "selected_count": len(selected_nodes),
+        "fallback_count": len(fallback_nodes),
+        "selected_role_distribution": strategy_result.selection_summary.selected_role_distribution,
+        "selected_digital_human_ids": selected_ids,
+        "avg_selected_final_score": strategy_result.summary.avg_selected_final_score,
+    }
+
+    payload: dict[str, Any] = {
+        "meta": {
+            "schema_version": SCHEMA_VERSION,
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "source": "hot_event_eval",
+            "generator_mode": _generator_mode(llm_meta),
+            "llm": llm_meta,
+        },
+        "event": {
+            "event_id": str(hot_event.get("event_id") or strategy_result.event.event_id),
+            "event_title": str(hot_event.get("event_title") or strategy_result.event.event_title),
+            "event_summary": str(hot_event.get("event_summary") or "").strip(),
+            "domain": str(hot_event.get("domain") or "general").strip() or "general",
+            "target": target,
+            "is_synthetic": bool(hot_event.get("is_synthetic", False)),
+            "opinion_variants": variants,
+        },
+        "summary": summary,
+        "stage_plans": [item.model_dump(mode="json") for item in strategy_result.stage_plans],
+        "five_dimensions": {
+            "target_object": strategy_result.strategy.target_object,
+            "time_plan": strategy_result.strategy.time_plan,
+            "frequency_plan": strategy_result.strategy.frequency_plan.model_dump(mode="json"),
+            "platform_plan": strategy_result.strategy.platform_plan.model_dump(mode="json"),
+            "content_plan": strategy_result.strategy.content_plan.model_dump(mode="json"),
+        },
+        "selected_digital_humans": selected_digital_humans,
+        "fallback_digital_humans": fallback_digital_humans,
+        "risk_control": strategy_result.strategy.risk_control.model_dump(mode="json"),
+        "explainability": strategy_result.strategy.explainability,
+    }
+    return payload
+
+
 def _run_hot_event_evaluation(
     *,
     workspace_root: str | Path,
@@ -181,129 +354,47 @@ def _run_hot_event_evaluation(
 
     target_dir = Path(output_dir) if output_dir is not None else root / "eval" / "output"
     output_path = target_dir / f"{strategy_result.event.event_id}_strategy_output.json"
+    markdown_path = output_path.with_suffix(".md")
+    output_payload["meta"]["output_files"] = {
+        "json": str(output_path),
+        "markdown": str(markdown_path),
+    }
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(output_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    write_markdown(markdown_path, render_eval_markdown(output_payload))
     return output_path, output_payload
 
 
-def run_hot_event_evaluations(
+def _digital_human_summary(
     *,
-    workspace_root: str | Path,
-    input_path: str | Path,
-    output_dir: str | Path | None = None,
-    event_id: str | None = None,
-    event_limit: int | None = 10,
-    profile_limit: int | None = None,
-    max_selected_nodes: int = 5,
-    risk_level: str | None = None,
-    campaign_window_hours: int = 24,
-    max_frequency_per_day: int = 3,
-    allowed_platforms: list[str] | None = None,
-    use_llm: bool = True,
-    llm_client: Any | None = None,
-) -> list[tuple[Path, dict[str, Any]]]:
-    events = load_hot_events(input_path)
-    selected_events = select_hot_events(
-        events,
-        event_id=event_id,
-        event_limit=event_limit,
-    )
-    results: list[tuple[Path, dict[str, Any]]] = []
-    for hot_event in selected_events:
-        output_path, output_payload = _run_hot_event_evaluation(
-            workspace_root=workspace_root,
-            output_dir=output_dir,
-            hot_event=hot_event,
-            profile_limit=profile_limit,
-            max_selected_nodes=max_selected_nodes,
-            risk_level=risk_level,
-            campaign_window_hours=campaign_window_hours,
-            max_frequency_per_day=max_frequency_per_day,
-            allowed_platforms=allowed_platforms,
-            use_llm=use_llm,
-            llm_client=llm_client,
-        )
-        results.append((output_path, output_payload))
-    return results
-
-
-def build_eval_output(
-    *,
-    hot_event: dict[str, Any],
-    strategy_result: StrategyResult,
-    workspace_root: str | Path | None = None,
-    use_llm: bool = True,
-    llm_client: Any | None = None,
+    node: StrategyNodePlan,
+    platform: str,
 ) -> dict[str, Any]:
-    selected_nodes = strategy_result.selected_nodes
-    selected_ids = [node.user_id for node in selected_nodes]
-    platform = strategy_result.strategy.platform_plan.primary_platform
-    target = str(hot_event.get("target") or strategy_result.event.target_goal or "扩大热点信息触达并引导理性讨论。")
-    llm_texts = _build_llm_node_texts(
-        hot_event=hot_event,
-        strategy_result=strategy_result,
-        platform=platform,
-        target=target,
-        workspace_root=workspace_root,
-        use_llm=use_llm,
-        llm_client=llm_client,
-    )
-
-    output: dict[str, Any] = {
-        "事件名称": str(hot_event.get("event_title") or strategy_result.event.event_title),
-        "选取数字人id组": selected_ids,
-    }
-    variants = _normalize_variants(hot_event.get("opinion_variants", []))
-    for node in selected_nodes:
-        generated = llm_texts.get(node.user_id, {})
-        output[_digital_human_output_key(node.user_id)] = {
-            "时间阶段": _stage_text(node),
-            "发帖频率": _frequency_text(node.frequency_per_day),
-            "发帖平台": platform,
-            "发帖内容": generated.get("发帖内容") or _post_content_text(
-                node=node,
-                target=target,
-                variants=variants,
-            ),
-            "目标受众": {
-                "目标群体画像": generated.get("目标群体画像") or _audience_profile_text(
-                    hot_event=hot_event,
-                    strategy_result=strategy_result,
-                    node=node,
-                ),
-                "目标群体交互策略": generated.get("目标群体交互策略") or _audience_interaction_text(node),
-            },
-            "与其他数字人互动策略": {
-                "互动数字人id集合": [item for item in selected_ids if item != node.user_id],
-                "互动策略": generated.get("互动策略") or _cross_digital_human_strategy(node, selected_nodes),
-            },
-        }
-    return output
-
-
-def _digital_human_info(node: StrategyNodePlan) -> dict[str, Any]:
     return {
+        "selection_rank": node.selection_rank,
         "user_id": node.user_id,
         "user_name": node.user_name,
         "selected_role": node.selected_role,
-        "selection_bucket": node.selection_bucket,
-        "selection_rank": node.selection_rank,
         "dispatch_stage": node.dispatch_stage,
+        "stage_text": _stage_text(node),
         "dispatch_priority": node.dispatch_priority,
         "timing_window": node.timing_window,
         "frequency_per_day": node.frequency_per_day,
-        "recommended_action": node.recommended_action,
-        "suggested_content_style": node.suggested_content_style,
-        "selection_explanation": node.rationale,
-        "matched_keywords": node.matched_keywords,
+        "frequency_text": _frequency_text(node.frequency_per_day),
+        "platform": platform,
+        "final_score": node.final_score,
         "risk_level": node.risk_level,
         "risk_flags": node.risk_flags,
         "manual_review_required": node.manual_review_required,
+        "matched_keywords": node.matched_keywords,
+        "recommended_action": node.recommended_action,
+        "suggested_content_style": node.suggested_content_style,
+        "selection_explanation": node.rationale,
         "metrics": {
-            "final_score": node.final_score,
             "influence_score": node.influence_score,
             "diffusion_score": node.diffusion_score,
             "topic_match_score": node.topic_match_score,
@@ -327,32 +418,53 @@ def _build_llm_node_texts(
     workspace_root: str | Path | None,
     use_llm: bool,
     llm_client: Any | None,
-) -> dict[str, dict[str, str]]:
-    fallback = _fallback_node_texts(
-        hot_event=hot_event,
-        strategy_result=strategy_result,
-        target=target,
-    )
+) -> tuple[dict[str, dict[str, str]], dict[str, Any]]:
+    metadata: dict[str, Any] = {
+        "requested": bool(use_llm),
+        "configured": False,
+        "attempted": False,
+        "used": False,
+        "provider": None,
+        "model": None,
+        "base_url": None,
+        "fallback_reason": None,
+    }
+
     if not use_llm:
-        return fallback
+        metadata["fallback_reason"] = "llm_disabled"
+        return {}, metadata
 
     eligible_nodes = [
         node for node in strategy_result.selected_nodes if _can_connect_llm(node)
     ]
     if not eligible_nodes:
-        return fallback
+        metadata["fallback_reason"] = "no_eligible_nodes"
+        return {}, metadata
 
     client = llm_client
     if client is None and workspace_root is not None:
         client = OpenAICompatibleLLMClient.from_env_files(workspace_root)
     if client is None:
-        return fallback
+        metadata["fallback_reason"] = "llm_not_configured"
+        return {}, metadata
+
+    if hasattr(client, "describe"):
+        details = client.describe()
+        metadata["provider"] = details.get("provider")
+        metadata["model"] = details.get("model")
+        metadata["base_url"] = details.get("base_url")
+    else:
+        metadata["provider"] = getattr(client, "provider", None)
+        metadata["model"] = getattr(client, "model", None)
+        metadata["base_url"] = getattr(client, "base_url", None)
+    metadata["configured"] = True
+    metadata["attempted"] = True
 
     system_prompt = (
-        "你是影响力事件分发策略的内容生成器。"
-        "你只为已经通过数据集筛选的匿名数字人节点生成中文执行文案。"
-        "必须输出严格 JSON，不要输出 Markdown。"
-        "不要编造真实身份、真实平台权限或未给出的外部事实。"
+        "你是影响力事件分发策略的内容生成助手。"
+        "请只为系统已经筛选出的匿名传播节点生成中文执行文案。"
+        "必须返回严格 JSON，不要输出 Markdown。"
+        "不要编造真实身份、平台权限或未给出的外部事实。"
     )
     user_prompt = _llm_prompt(
         hot_event=hot_event,
@@ -361,58 +473,62 @@ def _build_llm_node_texts(
         platform=platform,
         target=target,
     )
+
     try:
         response = client.generate_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
-    except (LLMClientError, OSError, ValueError, TypeError):
-        return fallback
+    except (LLMClientError, OSError, ValueError, TypeError) as exc:
+        metadata["fallback_reason"] = f"llm_request_failed:{type(exc).__name__}"
+        return {}, metadata
 
     llm_nodes = response.get("nodes", response)
     if not isinstance(llm_nodes, dict):
-        return fallback
+        metadata["fallback_reason"] = "invalid_llm_response"
+        return {}, metadata
 
-    result = dict(fallback)
+    overrides: dict[str, dict[str, str]] = {}
     for node in eligible_nodes:
         raw_node = (
             llm_nodes.get(node.user_id)
             or llm_nodes.get(str(node.user_id))
-            or llm_nodes.get(_digital_human_output_key(node.user_id))
-            or llm_nodes.get(f"数字人id{node.user_id}")
-            or llm_nodes.get(f"数字人ID{node.user_id}")
+            or llm_nodes.get(f"id{node.user_id}")
+            or llm_nodes.get(f"digital_human_{node.user_id}")
         )
         if not isinstance(raw_node, dict):
             continue
         cleaned = _clean_llm_node_fields(raw_node)
         if cleaned:
-            result[node.user_id] = {
-                **result.get(node.user_id, {}),
-                **cleaned,
-            }
-    return result
+            overrides[node.user_id] = cleaned
+
+    if overrides:
+        metadata["used"] = True
+    else:
+        metadata["fallback_reason"] = "empty_llm_content"
+    return overrides, metadata
 
 
-def _fallback_node_texts(
+def _fallback_content_bundle(
     *,
     hot_event: dict[str, Any],
     strategy_result: StrategyResult,
+    node: StrategyNodePlan,
     target: str,
-) -> dict[str, dict[str, str]]:
-    variants = _normalize_variants(hot_event.get("opinion_variants", []))
-    result: dict[str, dict[str, str]] = {}
-    for node in strategy_result.selected_nodes:
-        result[node.user_id] = {
-            "发帖内容": _post_content_text(node=node, target=target, variants=variants),
-            "目标群体画像": _audience_profile_text(
-                hot_event=hot_event,
-                strategy_result=strategy_result,
-                node=node,
-            ),
-            "目标群体交互策略": _audience_interaction_text(node),
-            "互动策略": _cross_digital_human_strategy(node, strategy_result.selected_nodes),
-        }
-    return result
+    variants: list[str],
+    selected_ids: list[str],
+) -> dict[str, Any]:
+    return {
+        "post_content": _post_content_text(node=node, target=target, variants=variants),
+        "audience_profile": _audience_profile_text(
+            hot_event=hot_event,
+            strategy_result=strategy_result,
+            node=node,
+        ),
+        "audience_interaction_strategy": _audience_interaction_text(node),
+        "cross_digital_human_ids": [item for item in selected_ids if item != node.user_id],
+        "cross_digital_human_strategy": _cross_digital_human_strategy(node, strategy_result.selected_nodes),
+    }
 
 
 def _can_connect_llm(node: StrategyNodePlan) -> bool:
@@ -462,19 +578,9 @@ def _llm_prompt(
             }
         )
 
-    required_schema = {
-        "nodes": {
-            "id81584": {
-                "发帖内容": "围绕事件目标生成的具体发帖内容或内容执行说明",
-                "目标群体画像": "说明针对哪些人群",
-                "目标群体交互策略": "说明@哪些粉丝、互动哪些评论、如何回复",
-                "互动策略": "说明如何与其他数字人点赞、评论、转发或错峰配合",
-            }
-        }
-    }
     prompt_payload = {
-        "任务": "为每个 eligible node 生成输出 JSON 中四个文案字段，替换规则模板内容。",
-        "事件": {
+        "task": "请为每个 eligible node 生成四个中文文案字段，用于替换规则模板内容。",
+        "event": {
             "event_id": hot_event.get("event_id"),
             "domain": hot_event.get("domain"),
             "event_title": hot_event.get("event_title"),
@@ -482,38 +588,44 @@ def _llm_prompt(
             "target": target,
             "opinion_variants": variants,
         },
-        "全局约束": [
-            "保持客观、克制、适合热点公共信息传播。",
-            "不要写具体发布时间，只使用给定时间阶段。",
-            "不要承诺真实平台执行能力。",
+        "global_constraints": [
+            "保持客观、克制，适合公共热点信息传播。",
+            "不要编造未给出的外部事实或真实平台执行权限。",
             "每个字段使用中文自然语言，长度控制在 1 到 3 句话。",
-            "发帖内容必须结合事件标题、目标、叙述变体和该数字人的 role、recommended_action、content_style_hint 生成。",
-            "每个数字人的四个文案字段都必须互相区分，不能复用同一句模板。",
-            "返回 nodes 对象时，key 必须严格使用 id + 节点 user_id，例如 id81584；不要使用“数字人id81584”。",
-            "频率字段已由系统提供为 1/day、2/day 这类格式，生成文案时不要改写成“每日一次”。",
+            "四个字段必须相互区分，不要复用同一句模板。",
+            "返回 nodes 对象时，key 必须使用 id + user_id，例如 id81584。",
         ],
-        "已评判可接入大模型的数字人节点": nodes_payload,
-        "必须返回的 JSON 结构": required_schema,
+        "eligible_nodes": nodes_payload,
+        "required_json_schema": {
+            "nodes": {
+                "id81584": {
+                    "post_content": "生成的发帖内容或执行文案",
+                    "audience_profile": "目标群体画像说明",
+                    "audience_interaction_strategy": "目标群体互动策略说明",
+                    "cross_digital_human_strategy": "与其他数字人的互动协同策略",
+                }
+            }
+        },
     }
     return json.dumps(prompt_payload, ensure_ascii=False, indent=2)
 
 
 def _clean_llm_node_fields(raw_node: dict[str, Any]) -> dict[str, str]:
-    allowed_fields = ("发帖内容", "目标群体画像", "目标群体交互策略", "互动策略")
-    result: dict[str, str] = {}
-    for field in allowed_fields:
-        value = raw_node.get(field)
-        if isinstance(value, str) and value.strip():
-            result[field] = value.strip()
-    return result
+    field_aliases = {
+        "post_content": ("post_content", "发帖内容"),
+        "audience_profile": ("audience_profile", "目标群体画像"),
+        "audience_interaction_strategy": ("audience_interaction_strategy", "目标群体互动策略"),
+        "cross_digital_human_strategy": ("cross_digital_human_strategy", "互动策略", "与其他数字人互动策略"),
+    }
 
-
-def _digital_human_output_key(user_id: str) -> str:
-    return f"id{user_id}"
-
-
-def _frequency_text(frequency_per_day: int) -> str:
-    return f"{frequency_per_day}/day"
+    cleaned: dict[str, str] = {}
+    for normalized_name, aliases in field_aliases.items():
+        for alias in aliases:
+            value = raw_node.get(alias)
+            if isinstance(value, str) and value.strip():
+                cleaned[normalized_name] = value.strip()
+                break
+    return cleaned
 
 
 def _stage_text(node: StrategyNodePlan) -> str:
@@ -529,6 +641,10 @@ def _stage_text(node: StrategyNodePlan) -> str:
     return stage_label
 
 
+def _frequency_text(frequency_per_day: int) -> str:
+    return f"{frequency_per_day}/day"
+
+
 def _post_content_text(
     *,
     node: StrategyNodePlan,
@@ -539,13 +655,14 @@ def _post_content_text(
     if variants:
         variant_index = max(node.selection_rank - 1, 0) % len(variants)
         variant_hint = f"参考叙述：{variants[variant_index]}"
+
     parts = [
-        f"传播目的：{target}",
+        f"传播目标：{target}",
         f"内容风格：{node.suggested_content_style}",
         f"执行动作：{node.recommended_action}",
         variant_hint,
     ]
-    return "；".join(item for item in parts if item)
+    return " ".join(item for item in parts if item)
 
 
 def _audience_profile_text(
@@ -556,21 +673,20 @@ def _audience_profile_text(
 ) -> str:
     target_objects = "、".join(strategy_result.strategy.target_object) or "泛公众"
     domain = str(hot_event.get("domain") or "general")
-    score_text = (
-        f"该数字人 final_score={node.final_score:.3f}，"
-        f"influence_score={node.influence_score:.3f}，"
-        f"diffusion_score={node.diffusion_score:.3f}"
+    return (
+        f"重点面向 {target_objects}，优先覆盖对 {domain} 议题敏感、"
+        f"关注公共信息和热点解释的人群。该节点 final_score={node.final_score:.3f}，"
+        f"influence_score={node.influence_score:.3f}，diffusion_score={node.diffusion_score:.3f}。"
     )
-    return f"面向{target_objects}，重点覆盖对 {domain} 话题敏感、关注公共信息和热点解释的人群；{score_text}。"
 
 
 def _audience_interaction_text(node: StrategyNodePlan) -> str:
     if node.selected_role == "core_publish_node":
-        return "优先承接首轮评论，@ 高相关粉丝和高质量评论用户，引导围绕事实、影响和应对建议展开讨论。"
+        return "优先承接首轮评论，围绕核心事实、影响范围和后续行动建议引导讨论。"
     if node.selected_role == "interaction_response_node":
-        return "重点回复评论区高频问题，筛选理性追问进行二次解释，必要时引用核心发布节点内容统一口径。"
+        return "重点回复高频问题，筛选理性追问并做二次解释，必要时回引核心发布内容。"
     if node.selected_role == "amplification_node":
-        return "优先转发核心信息，@ 相邻圈层粉丝，选择高赞或高信息量评论进行补充互动。"
+        return "优先转述核心信息，面向相邻圈层用户做摘要式扩散和补充互动。"
     return "补充背景信息，回应长尾问题，避免与其他数字人重复表达。"
 
 
@@ -578,24 +694,35 @@ def _cross_digital_human_strategy(
     node: StrategyNodePlan,
     selected_nodes: list[StrategyNodePlan],
 ) -> str:
-    core_ids = [item.user_id for item in selected_nodes if item.selected_role == "core_publish_node" and item.user_id != node.user_id]
-    engage_ids = [item.user_id for item in selected_nodes if item.selected_role == "interaction_response_node" and item.user_id != node.user_id]
-    amplify_ids = [item.user_id for item in selected_nodes if item.selected_role == "amplification_node" and item.user_id != node.user_id]
+    core_ids = [
+        item.user_id for item in selected_nodes
+        if item.selected_role == "core_publish_node" and item.user_id != node.user_id
+    ]
+    engage_ids = [
+        item.user_id for item in selected_nodes
+        if item.selected_role == "interaction_response_node" and item.user_id != node.user_id
+    ]
+    amplify_ids = [
+        item.user_id for item in selected_nodes
+        if item.selected_role == "amplification_node" and item.user_id != node.user_id
+    ]
 
     if node.selected_role == "core_publish_node":
-        targets = engage_ids + amplify_ids
-        if targets:
-            return f"发布首帖后，由互动节点 {','.join(engage_ids) or '无'} 承接评论，由扩散节点 {','.join(amplify_ids) or '无'} 分时段转发放大。"
-        return "作为主发布节点独立完成首发，并等待其他节点补位互动。"
+        return (
+            f"发布首帖后，由互动节点 {','.join(engage_ids) or '-'} 承接评论，"
+            f"由扩散节点 {','.join(amplify_ids) or '-'} 在后续阶段做转述放大。"
+        )
     if node.selected_role == "interaction_response_node":
-        if core_ids:
-            return f"优先评论和点赞核心发布节点 {','.join(core_ids)} 的帖子，集中回答评论区疑问并回引主帖。"
-        return "围绕高频疑问进行评论互动，并把讨论收束到事实和行动建议。"
+        return (
+            f"优先评论核心发布节点 {','.join(core_ids) or '-'} 的主帖，"
+            "集中回复评论区高频问题，并将讨论回收至统一口径。"
+        )
     if node.selected_role == "amplification_node":
-        if core_ids:
-            return f"在扩散期转发核心发布节点 {','.join(core_ids)} 的帖子，必要时点赞互动节点 {','.join(engage_ids) or '无'} 的答疑内容。"
-        return "在扩散期转发高质量解释内容，并与其他扩散节点错峰发布。"
-    return "点赞、评论或转发其他主选数字人的关键内容，承担补充说明和长尾维护。"
+        return (
+            f"在扩散期转发核心节点 {','.join(core_ids) or '-'} 的内容，"
+            f"必要时补充互动节点 {','.join(engage_ids) or '-'} 的答疑信息。"
+        )
+    return "对其他主选数字人的关键信息做补充说明和长尾维护。"
 
 
 def _normalize_variants(raw_variants: Any) -> list[str]:
@@ -610,3 +737,11 @@ def _infer_hot_event_risk_level(domain: str) -> str:
     if domain in {"finance", "financial_market", "energy", "public_policy"}:
         return "medium"
     return "low"
+
+
+def _generator_mode(llm_meta: dict[str, Any]) -> str:
+    if not llm_meta.get("requested"):
+        return "rule_only"
+    if llm_meta.get("used"):
+        return "llm_enhanced"
+    return "llm_fallback"

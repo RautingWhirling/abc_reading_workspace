@@ -13,16 +13,27 @@ from influence_strategy.eval_hot_events import (
 
 
 class FakeLLMClient:
-    def generate_json(self, *, system_prompt: str, user_prompt: str):
+    provider = "deepseek"
+    model = "deepseek-test"
+    base_url = "https://api.deepseek.com"
+
+    def describe(self) -> dict[str, str]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "base_url": self.base_url,
+        }
+
+    def generate_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, dict]:
         payload = json.loads(user_prompt)
         nodes = {}
-        for node in payload["已评判可接入大模型的数字人节点"]:
+        for node in payload["eligible_nodes"]:
             user_id = node["user_id"]
-            nodes[user_id] = {
-                "发帖内容": f"LLM生成发帖内容-{user_id}",
-                "目标群体画像": f"LLM生成目标群体画像-{user_id}",
-                "目标群体交互策略": f"LLM生成目标群体交互策略-{user_id}",
-                "互动策略": f"LLM生成互动策略-{user_id}",
+            nodes[f"id{user_id}"] = {
+                "post_content": f"LLM generated post content {user_id}",
+                "audience_profile": f"LLM generated audience profile {user_id}",
+                "audience_interaction_strategy": f"LLM generated interaction strategy {user_id}",
+                "cross_digital_human_strategy": f"LLM generated collaboration strategy {user_id}",
             }
         return {"nodes": nodes}
 
@@ -32,9 +43,9 @@ class EvalHotEventsTest(unittest.TestCase):
         hot_event = {
             "event_id": "hot_event_test",
             "domain": "technology",
-            "event_title": "高端AI芯片供应引发关注",
-            "event_summary": "算力芯片供需紧张，企业关注替代方案。",
-            "opinion_variants": [f"叙述 {index}" for index in range(1, 11)],
+            "event_title": "AI supply attention",
+            "event_summary": "Chip supply tension continues.",
+            "opinion_variants": [f"Variant {index}" for index in range(1, 11)],
         }
 
         payload = hot_event_to_pipeline_payload(hot_event)
@@ -42,10 +53,10 @@ class EvalHotEventsTest(unittest.TestCase):
         self.assertEqual(payload["event_id"], "hot_event_test")
         self.assertEqual(payload["constraints"]["max_selected_nodes"], 5)
         self.assertEqual(payload["constraints"]["risk_level"], "low")
-        self.assertIn("10. 叙述 10", payload["event_description"])
+        self.assertIn("10. Variant 10", payload["event_description"])
         self.assertIn("technology", payload["target_audience"])
 
-    def test_run_hot_event_evaluation_writes_output_with_dimensions_and_digital_humans(self) -> None:
+    def test_run_hot_event_evaluation_writes_structured_json_and_markdown(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             self._write_minimal_workspace(root)
@@ -59,12 +70,12 @@ class EvalHotEventsTest(unittest.TestCase):
                         {
                             "event_id": "hot_event_eval_001",
                             "domain": "technology",
-                            "event_title": "高端AI芯片供应引发产业链关注",
-                            "event_summary": "高端算力芯片供需紧张，企业关注替代和优化方案。",
-                            "target": "说明AI芯片供应变化对产业链的影响。",
+                            "event_title": "AI chip supply focus",
+                            "event_summary": "High-end chip supply is tightening.",
+                            "target": "Explain the impact of chip supply changes on the industry chain.",
                             "is_synthetic": True,
                             "opinion_variants": [
-                                f"AI芯片供应链叙述变体 {index}"
+                                f"AI chip supply variant {index}"
                                 for index in range(1, 11)
                             ],
                         }
@@ -78,26 +89,33 @@ class EvalHotEventsTest(unittest.TestCase):
                 workspace_root=root,
                 input_path=input_path,
                 output_dir=eval_dir / "output",
+                use_llm=False,
             )
 
             self.assertTrue(output_path.exists())
-            self.assertEqual(payload["事件名称"], "高端AI芯片供应引发产业链关注")
-            self.assertGreaterEqual(len(payload["选取数字人id组"]), 1)
+            self.assertTrue(output_path.with_suffix(".md").exists())
+            self.assertEqual(payload["meta"]["schema_version"], "eval_v2")
+            self.assertEqual(payload["meta"]["generator_mode"], "rule_only")
+            self.assertEqual(payload["summary"]["event_title"], "AI chip supply focus")
+            self.assertGreaterEqual(payload["summary"]["selected_count"], 1)
+            self.assertIn("selected_digital_human_ids", payload["summary"])
+            self.assertIn("target_object", payload["five_dimensions"])
+            self.assertIn("stage_plans", payload)
+            self.assertIn("selected_digital_humans", payload)
+            self.assertIn("fallback_digital_humans", payload)
+            self.assertIn("risk_control", payload)
+            self.assertIn("explainability", payload)
 
-            first_human_id = payload["选取数字人id组"][0]
-            first_human = payload[f"id{first_human_id}"]
-            self.assertIn("时间阶段", first_human)
-            self.assertIn("发帖频率", first_human)
-            self.assertRegex(first_human["发帖频率"], r"^\d+/day$")
-            self.assertIn("发帖平台", first_human)
-            self.assertIn("发帖内容", first_human)
-            self.assertIn("目标受众", first_human)
-            self.assertIn("与其他数字人互动策略", first_human)
-            self.assertIn("目标群体画像", first_human["目标受众"])
-            self.assertIn("目标群体交互策略", first_human["目标受众"])
-            self.assertIn("互动数字人id集合", first_human["与其他数字人互动策略"])
-            self.assertIn("互动策略", first_human["与其他数字人互动策略"])
-            self.assertIn("说明AI芯片供应变化对产业链的影响", first_human["发帖内容"])
+            first_human = payload["selected_digital_humans"][0]
+            self.assertIn("stage_text", first_human)
+            self.assertIn("frequency_text", first_human)
+            self.assertRegex(first_human["frequency_text"], r"^\d+/day$")
+            self.assertIn("content_output", first_human)
+            self.assertIn("post_content", first_human["content_output"])
+            self.assertIn(
+                "Explain the impact of chip supply changes on the industry chain.",
+                first_human["content_output"]["post_content"],
+            )
 
     def test_run_hot_event_evaluation_replaces_text_fields_with_llm_content(self) -> None:
         with TemporaryDirectory() as tmpdir:
@@ -112,10 +130,10 @@ class EvalHotEventsTest(unittest.TestCase):
                     {
                         "event_id": "hot_event_eval_llm",
                         "domain": "technology",
-                        "event_title": "AI芯片供应测试事件",
-                        "event_summary": "高端算力芯片供需紧张。",
-                        "target": "测试大模型替换内容。",
-                        "opinion_variants": [f"叙述 {index}" for index in range(1, 11)],
+                        "event_title": "AI chip supply test",
+                        "event_summary": "High-end chip supply is tightening.",
+                        "target": "Test replacing content with LLM output.",
+                        "opinion_variants": [f"Variant {index}" for index in range(1, 11)],
                     },
                     ensure_ascii=False,
                 ),
@@ -130,14 +148,29 @@ class EvalHotEventsTest(unittest.TestCase):
             )
 
             self.assertTrue(output_path.exists())
-            first_human_id = payload["选取数字人id组"][0]
-            first_human = payload[f"id{first_human_id}"]
-            self.assertEqual(first_human["发帖内容"], f"LLM生成发帖内容-{first_human_id}")
-            self.assertEqual(first_human["目标受众"]["目标群体画像"], f"LLM生成目标群体画像-{first_human_id}")
-            self.assertEqual(first_human["目标受众"]["目标群体交互策略"], f"LLM生成目标群体交互策略-{first_human_id}")
-            self.assertEqual(first_human["与其他数字人互动策略"]["互动策略"], f"LLM生成互动策略-{first_human_id}")
+            self.assertEqual(payload["meta"]["generator_mode"], "llm_enhanced")
+            self.assertTrue(payload["meta"]["llm"]["used"])
 
-    def test_run_hot_event_evaluations_writes_first_n_events(self) -> None:
+            first_human = payload["selected_digital_humans"][0]
+            self.assertTrue(first_human["content_generation"]["llm_generated_fields"])
+            self.assertTrue(
+                first_human["content_output"]["post_content"].startswith("LLM generated post content")
+            )
+            self.assertTrue(
+                first_human["content_output"]["audience_profile"].startswith("LLM generated audience profile")
+            )
+            self.assertTrue(
+                first_human["content_output"]["audience_interaction_strategy"].startswith(
+                    "LLM generated interaction strategy"
+                )
+            )
+            self.assertTrue(
+                first_human["content_output"]["cross_digital_human_strategy"].startswith(
+                    "LLM generated collaboration strategy"
+                )
+            )
+
+    def test_run_hot_event_evaluations_writes_first_n_events_and_batch_markdown(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             self._write_minimal_workspace(root)
@@ -151,11 +184,11 @@ class EvalHotEventsTest(unittest.TestCase):
                         {
                             "event_id": f"hot_event_eval_{index:03d}",
                             "domain": "technology",
-                            "event_title": f"批量测试事件 {index}",
-                            "event_summary": "热点事件批量评测。",
-                            "target": "测试批量输出。",
+                            "event_title": f"Batch event {index}",
+                            "event_summary": "Batch evaluation event.",
+                            "target": "Test batch output.",
                             "opinion_variants": [
-                                f"批量叙述 {variant_index}"
+                                f"Batch variant {variant_index}"
                                 for variant_index in range(1, 11)
                             ],
                         }
@@ -182,15 +215,10 @@ class EvalHotEventsTest(unittest.TestCase):
                     "hot_event_eval_002_strategy_output.json",
                 ],
             )
-            self.assertTrue(
-                (eval_dir / "output" / "hot_event_eval_001_strategy_output.json").exists()
-            )
-            self.assertTrue(
-                (eval_dir / "output" / "hot_event_eval_002_strategy_output.json").exists()
-            )
-            self.assertFalse(
-                (eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists()
-            )
+            self.assertTrue((eval_dir / "output" / "hot_event_eval_001_strategy_output.md").exists())
+            self.assertTrue((eval_dir / "output" / "hot_event_eval_002_strategy_output.md").exists())
+            self.assertTrue((eval_dir / "output" / "output.md").exists())
+            self.assertFalse((eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists())
 
     def _write_minimal_workspace(self, root: Path) -> None:
         raw_dir = root / "data" / "raw"
@@ -210,24 +238,24 @@ class EvalHotEventsTest(unittest.TestCase):
                 "user_name": "core_reader",
                 "user_followers": 2400,
                 "user_friends": 80,
-                "user_interests": ["亲子阅读", "英语启蒙"],
-                "user_description": "专注亲子阅读和英语启蒙讨论",
+                "user_interests": ["family_reading", "english_learning"],
+                "user_description": "Focus on family reading and english learning discussions.",
             },
             "2": {
                 "user_id": 2,
                 "user_name": "amplifier",
                 "user_followers": 650,
                 "user_friends": 90,
-                "user_interests": ["传播扩散", "阅读活动"],
-                "user_description": "适合做二次扩散和热点转述",
+                "user_interests": ["content_diffusion", "reading_activity"],
+                "user_description": "Suitable for secondary diffusion and hot topic retelling.",
             },
             "3": {
                 "user_id": 3,
                 "user_name": "responder",
                 "user_followers": 380,
                 "user_friends": 50,
-                "user_interests": ["亲子问答", "教育交流"],
-                "user_description": "擅长评论互动与答疑",
+                "user_interests": ["qa", "education_exchange"],
+                "user_description": "Good at comment interaction and answering questions.",
             },
         }
         interactions = {

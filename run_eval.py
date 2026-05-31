@@ -15,7 +15,7 @@ from influence_strategy.eval_hot_events import run_hot_event_evaluations
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="读取 eval 热点事件数据，生成包含五个维度和数字人选择说明的分发策略输出。",
+        description="读取热点事件评测数据，生成标准化 JSON 与 Markdown 策略输出。",
     )
     parser.add_argument(
         "--workspace-root",
@@ -27,7 +27,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--input",
         type=Path,
         default=PROJECT_ROOT / "eval" / "hot_event_opinion_variants.json",
-        help="热点事件 eval JSON 文件，可以是单条对象或事件数组。",
+        help="热点事件评测 JSON 文件，可以是单条对象或事件数组。",
     )
     parser.add_argument(
         "--event-id",
@@ -38,7 +38,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--event-limit",
         type=int,
         default=10,
-        help="未指定 --event-id 时运行输入文件前 N 条热点事件，默认 10。",
+        help="未指定 --event-id 时，默认运行前 N 条热点事件。",
     )
     parser.add_argument(
         "--output-dir",
@@ -60,7 +60,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--risk-level",
         choices=["low", "medium", "high"],
-        help="覆盖事件风险等级；默认按热点领域做简单推断。",
+        help="覆盖事件风险等级；默认按热点领域简单推断。",
     )
     parser.add_argument(
         "--campaign-window-hours",
@@ -82,7 +82,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--disable-llm",
         action="store_true",
-        help="关闭大模型内容生成，使用规则模板兜底。",
+        help="关闭大模型文案增强，仅使用规则模板兜底。",
     )
     return parser
 
@@ -116,12 +116,16 @@ def main() -> int:
         "event_count": len(results),
         "outputs": [
             {
-                "output_path": str(output_path),
-                "event_name": payload["事件名称"],
-                "selected_digital_human_ids": payload["选取数字人id组"],
-                "selected_digital_human_count": len(payload["选取数字人id组"]),
+                "event_id": payload["summary"]["event_id"],
+                "event_title": payload["summary"]["event_title"],
+                "generator_mode": payload["meta"]["generator_mode"],
+                "llm_used": payload["meta"]["llm"]["used"],
+                "selected_digital_human_ids": payload["summary"]["selected_digital_human_ids"],
+                "selected_digital_human_count": payload["summary"]["selected_count"],
+                "json_output_path": payload["meta"]["output_files"]["json"],
+                "markdown_output_path": payload["meta"]["output_files"]["markdown"],
             }
-            for output_path, payload in results
+            for _output_path, payload in results
         ],
     }
     print(json.dumps(console_summary, ensure_ascii=True, indent=2))
