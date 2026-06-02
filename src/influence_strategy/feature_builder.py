@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import math
 import re
-from pathlib import Path
 from json import JSONDecodeError
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from rapidfuzz import fuzz
 
 from .data_loader import DataLoader
+from .llm_client import LLMClientError, OpenAICompatibleLLMClient
 from .models import (
     EnrichedUserProfile,
     FeatureBuildResult,
@@ -18,6 +20,7 @@ from .models import (
     ProductContext,
     UserProfile,
 )
+from .prompts import build_feature_enrichment_system_prompt, build_feature_enrichment_user_prompt
 
 _SPACE_RE = re.compile(r"\s+")
 _NON_TEXT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
@@ -42,6 +45,8 @@ class FeatureBuilder:
         workspace_root: str | Path,
         event: ParsedEvent,
         profile_limit: int | None = None,
+        use_llm: bool = False,
+        llm_client: Any | None = None,
     ) -> FeatureBuildResult:
         loader = DataLoader(workspace_root, product_name=self.product_name)
         product_context = loader.load_product_context()
@@ -62,6 +67,9 @@ class FeatureBuilder:
             event=event,
             enriched_profiles=enriched_profiles,
             source_user_ids=source_user_ids,
+            workspace_root=workspace_root,
+            use_llm=use_llm,
+            llm_client=llm_client,
         )
 
     def build_features(
@@ -71,6 +79,9 @@ class FeatureBuilder:
         event: ParsedEvent,
         enriched_profiles: dict[str, EnrichedUserProfile] | None = None,
         source_user_ids: set[str] | None = None,
+        workspace_root: str | Path | None = None,
+        use_llm: bool = False,
+        llm_client: Any | None = None,
     ) -> FeatureBuildResult:
         enriched_profiles = enriched_profiles or {}
         source_user_ids = source_user_ids or set()
@@ -118,7 +129,7 @@ class FeatureBuilder:
         )
 
         node_features: list[NodeFeature] = []
-        keywords = event.extracted_keywords + event.target_audience
+        keywords = self._event_match_keywords(event)
         normalized_keywords = self._prepare_keywords(keywords)
 
         for user_id, profile in profiles.items():
@@ -160,6 +171,11 @@ class FeatureBuilder:
             matched_keywords = self._match_keywords(
                 profile=profile,
                 normalized_keywords=normalized_keywords,
+            )
+            semantic_profile = DataLoader.summarize_profile_for_semantics(
+                profile,
+                enriched_profile=enriched,
+                is_interaction_source=user_id in source_user_ids,
             )
             topic_match_score = len(matched_keywords) / len(normalized_keywords) if normalized_keywords else 0.0
             profile_completeness_score = self._profile_completeness_score(profile)
@@ -242,19 +258,20 @@ class FeatureBuilder:
                     activity_score=round(activity_score, 6),
                     stability_score=round(stability_score, 6),
                     feature_ready_score=round(feature_ready_score, 6),
+                    semantic_profile=semantic_profile,
+                    semantic_tags=list(matched_keywords[:4]),
                     keyword_hit_count=len(matched_keywords),
                     matched_keywords=matched_keywords,
                 )
             )
 
-        node_features.sort(
-            key=lambda item: (
-                item.feature_ready_score,
-                item.topic_match_score,
-                item.influence_score,
-                item.follower_count,
-            ),
-            reverse=True,
+        node_features = self._sort_features(node_features)
+        node_features = self._augment_with_llm(
+            node_features=node_features,
+            event=event,
+            workspace_root=workspace_root,
+            use_llm=use_llm,
+            llm_client=llm_client,
         )
 
         matched_node_count = sum(1 for item in node_features if item.keyword_hit_count > 0)
@@ -294,6 +311,25 @@ class FeatureBuilder:
                 prepared.append(normalized)
         return prepared
 
+    def _event_match_keywords(self, event: ParsedEvent) -> list[str]:
+        generic_tags = {"general_public", "awareness", "engagement", "response", "conversion"}
+        audience_keywords = [
+            item
+            for item in event.target_audience
+            if item not in generic_tags
+        ]
+        semantic_keywords = [
+            item
+            for item in event.semantic_tags
+            if item not in generic_tags
+        ]
+        return [
+            event.event_title,
+            *event.extracted_keywords,
+            *semantic_keywords,
+            *audience_keywords,
+        ]
+
     def _match_keywords(self, profile: UserProfile, normalized_keywords: list[str]) -> list[str]:
         if not normalized_keywords:
             return []
@@ -311,9 +347,24 @@ class FeatureBuilder:
             if keyword in compact_text:
                 matches.append(keyword)
                 continue
-            if any(fuzz.partial_ratio(keyword, token) >= 90 for token in tokens):
+            if any(self._token_fuzzy_matches(keyword, token) for token in tokens):
                 matches.append(keyword)
         return matches
+
+    def _token_fuzzy_matches(self, keyword: str, token: str) -> bool:
+        if not keyword or not token:
+            return False
+        normalized_keyword = keyword.replace(" ", "")
+        normalized_token = token.replace(" ", "")
+        if len(normalized_keyword) <= 1 or len(normalized_token) <= 1:
+            return False
+        if normalized_keyword.isascii() or normalized_token.isascii():
+            if len(normalized_keyword) < 4 or len(normalized_token) < 4:
+                return False
+        else:
+            if len(normalized_keyword) < 2 or len(normalized_token) < 2:
+                return False
+        return fuzz.partial_ratio(keyword, token) >= 90
 
     def _profile_completeness_score(self, profile: UserProfile) -> float:
         has_description = 1.0 if profile.user_description.strip() else 0.0
@@ -355,3 +406,350 @@ class FeatureBuilder:
         if denominator <= 0:
             return 0.0
         return _clip_score(math.log1p(max(0, int(value))) / denominator)
+
+    def _sort_features(self, node_features: list[NodeFeature]) -> list[NodeFeature]:
+        node_features.sort(
+            key=lambda item: (
+                item.keyword_hit_count > 0,
+                item.topic_match_score,
+                item.feature_ready_score,
+                item.activity_score,
+                item.stability_score,
+                item.influence_score,
+                item.follower_count,
+            ),
+            reverse=True,
+        )
+        return node_features
+
+    def _augment_with_llm(
+        self,
+        *,
+        node_features: list[NodeFeature],
+        event: ParsedEvent,
+        workspace_root: str | Path | None,
+        use_llm: bool,
+        llm_client: Any | None,
+    ) -> list[NodeFeature]:
+        if not use_llm or not node_features:
+            return node_features
+
+        client = llm_client
+        if client is None and workspace_root is not None:
+            client = OpenAICompatibleLLMClient.from_env_files(workspace_root)
+        if client is None:
+            return node_features
+
+        candidate_pool_size = event.dispatch_preferences.candidate_pool_size
+        top_candidates = self._candidate_pool_for_llm(
+            node_features=node_features,
+            candidate_pool_size=candidate_pool_size,
+        )
+        candidate_cards = [
+            {
+                "user_id": feature.user_id,
+                "user_name": feature.user_name,
+                "role_hint": feature.role_hint,
+                "semantic_profile": feature.semantic_profile,
+                "matched_keywords": feature.matched_keywords,
+                "baseline_scores": {
+                    "feature_ready_score": feature.feature_ready_score,
+                    "topic_match_score": feature.topic_match_score,
+                    "influence_score": feature.influence_score,
+                    "diffusion_score": feature.diffusion_score,
+                    "activity_score": feature.activity_score,
+                    "stability_score": feature.stability_score,
+                },
+                "signals": {
+                    "follower_count": feature.follower_count,
+                    "friend_count": feature.friend_count,
+                    "neighbor_count": feature.neighbor_count,
+                    "mutual_neighbor_count": feature.mutual_neighbor_count,
+                    "received_interaction_count": feature.received_interaction_count,
+                    "made_interaction_count": feature.made_interaction_count,
+                    "is_interaction_source": feature.is_interaction_source,
+                    "influencer_flag": feature.influencer_flag,
+                },
+            }
+            for feature in top_candidates
+        ]
+
+        try:
+            response = client.generate_json(
+                system_prompt=build_feature_enrichment_system_prompt(),
+                user_prompt=build_feature_enrichment_user_prompt(
+                    event=event,
+                    candidate_cards=candidate_cards,
+                ),
+            )
+        except (LLMClientError, OSError, ValueError, TypeError):
+            return node_features
+
+        raw_nodes = self._extract_llm_node_mapping(
+            response=response,
+            expected_ids=[feature.user_id for feature in top_candidates],
+        )
+        if not raw_nodes:
+            return node_features
+
+        llm_updates: dict[str, dict[str, Any]] = {}
+        for feature in top_candidates:
+            raw_node = (
+                raw_nodes.get(feature.user_id)
+                or raw_nodes.get(str(feature.user_id))
+                or raw_nodes.get(f"id{feature.user_id}")
+                or raw_nodes.get(f"digital_human_{feature.user_id}")
+            )
+            if not isinstance(raw_node, dict):
+                continue
+
+            event_relevance = self._coerce_score(
+                self._pick_first(raw_node, "semantic_relevance_score", "event_semantic_relevance_score", "event_relevance_score", "relevance_score")
+            )
+            audience_fit = self._coerce_score(
+                self._pick_first(raw_node, "audience_fit_score", "audience_score")
+            )
+            role_fit = self._coerce_score(
+                self._pick_first(raw_node, "role_fit_score", "role_score")
+            )
+            narrative_fit = self._coerce_score(
+                self._pick_first(raw_node, "narrative_fit_score", "narrative_score")
+            )
+            risk_conflict = self._coerce_score(
+                self._pick_first(raw_node, "risk_conflict_score", "risk_score", "conflict_score")
+            )
+            novelty = self._coerce_score(
+                self._pick_first(raw_node, "novelty_score", "diversity_score")
+            )
+            llm_feature_score = _clip_score(
+                0.35 * event_relevance
+                + 0.20 * audience_fit
+                + 0.20 * role_fit
+                + 0.15 * narrative_fit
+                + 0.10 * novelty
+            )
+            llm_updates[feature.user_id] = {
+                "event_semantic_relevance_score": event_relevance,
+                "audience_fit_score": audience_fit,
+                "role_fit_score": role_fit,
+                "narrative_fit_score": narrative_fit,
+                "risk_conflict_score": risk_conflict,
+                "novelty_score": novelty,
+                "llm_feature_score": llm_feature_score,
+                "semantic_tags": self._normalize_semantic_tags(
+                    self._pick_first(raw_node, "semantic_tags", "tags")
+                ) or feature.semantic_tags,
+                "candidate_reasoning": self._normalize_reasoning(
+                    self._pick_first(raw_node, "reasoning", "reasons", "analysis")
+                ),
+                "llm_feature_used": True,
+            }
+
+        if not llm_updates:
+            return node_features
+
+        semantic_weight = max(event.dispatch_preferences.semantic_weight, 0.50)
+        base_weight = max(0.0, 1.0 - semantic_weight)
+        updated_features: list[NodeFeature] = []
+        for feature in node_features:
+            update = llm_updates.get(feature.user_id)
+            if update is None:
+                updated_features.append(feature)
+                continue
+
+            augmented_ready_score = _clip_score(
+                base_weight * feature.feature_ready_score
+                + semantic_weight * update["llm_feature_score"]
+            )
+            updated_features.append(
+                feature.model_copy(
+                    update={
+                        **update,
+                        "feature_ready_score": round(augmented_ready_score, 6),
+                    }
+                )
+            )
+
+        return self._sort_features(updated_features)
+
+    def _coerce_score(self, value: Any) -> float:
+        try:
+            return _clip_score(float(value))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _pick_first(self, payload: dict[str, Any], *keys: str) -> Any:
+        for key in keys:
+            if key in payload:
+                return payload[key]
+        return None
+
+    def _candidate_pool_for_llm(
+        self,
+        *,
+        node_features: list[NodeFeature],
+        candidate_pool_size: int,
+    ) -> list[NodeFeature]:
+        diversified: list[NodeFeature] = []
+        used_ids: set[str] = set()
+
+        def add_bucket(features: list[NodeFeature], *, generic_high_influence_cap: int | None = None) -> None:
+            generic_high_influence_count = 0
+            for feature in features:
+                if len(diversified) >= candidate_pool_size:
+                    return
+                if feature.user_id in used_ids:
+                    continue
+                is_generic_high_influence = (
+                    feature.keyword_hit_count == 0
+                    and feature.topic_match_score == 0.0
+                    and feature.influence_score >= 0.65
+                )
+                if (
+                    generic_high_influence_cap is not None
+                    and is_generic_high_influence
+                    and generic_high_influence_count >= generic_high_influence_cap
+                ):
+                    continue
+                diversified.append(feature)
+                used_ids.add(feature.user_id)
+                if is_generic_high_influence:
+                    generic_high_influence_count += 1
+
+        topic_bucket = sorted(
+            node_features,
+            key=lambda item: (
+                item.keyword_hit_count,
+                item.topic_match_score,
+                item.stability_score,
+                item.activity_score,
+            ),
+            reverse=True,
+        )
+        interaction_bucket = sorted(
+            [
+                item
+                for item in node_features
+                if item.is_interaction_source or item.role_hint == "interaction_response"
+            ],
+            key=lambda item: (
+                item.activity_score,
+                item.diffusion_score,
+                item.stability_score,
+                item.influence_score,
+            ),
+            reverse=True,
+        )
+        diffusion_bucket = sorted(
+            node_features,
+            key=lambda item: (
+                item.diffusion_score,
+                item.activity_score,
+                item.stability_score,
+                item.influence_score,
+            ),
+            reverse=True,
+        )
+        baseline_bucket = list(node_features)
+
+        add_bucket(topic_bucket)
+        add_bucket(interaction_bucket, generic_high_influence_cap=max(2, candidate_pool_size // 6))
+        add_bucket(diffusion_bucket, generic_high_influence_cap=max(2, candidate_pool_size // 6))
+        add_bucket(baseline_bucket, generic_high_influence_cap=max(2, candidate_pool_size // 6))
+        return diversified[:candidate_pool_size]
+
+    def _extract_llm_node_mapping(
+        self,
+        *,
+        response: dict[str, Any],
+        expected_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        if not isinstance(response, dict):
+            return {}
+
+        alias_keys = ("nodes", "candidates", "results", "items", "data")
+        for alias in alias_keys:
+            normalized = self._normalize_llm_container(response.get(alias), expected_ids)
+            if normalized:
+                return normalized
+
+        normalized_response = self._normalize_llm_container(response, expected_ids)
+        if normalized_response:
+            return normalized_response
+
+        for value in response.values():
+            normalized = self._normalize_llm_container(value, expected_ids)
+            if normalized:
+                return normalized
+        return {}
+
+    def _normalize_llm_container(
+        self,
+        container: Any,
+        expected_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        if isinstance(container, list):
+            normalized: dict[str, dict[str, Any]] = {}
+            for item in container:
+                if not isinstance(item, dict):
+                    continue
+                user_id = str(
+                    item.get("user_id")
+                    or item.get("id")
+                    or item.get("node_id")
+                    or item.get("digital_human_id")
+                    or ""
+                ).strip()
+                if user_id:
+                    normalized[user_id] = item
+            return normalized
+
+        if not isinstance(container, dict):
+            return {}
+
+        normalized: dict[str, dict[str, Any]] = {}
+        for expected_id in expected_ids:
+            raw_node = (
+                container.get(expected_id)
+                or container.get(str(expected_id))
+                or container.get(f"id{expected_id}")
+                or container.get(f"digital_human_{expected_id}")
+            )
+            if isinstance(raw_node, dict):
+                normalized[str(expected_id)] = raw_node
+
+        if normalized:
+            return normalized
+
+        for key, value in container.items():
+            if not isinstance(value, dict):
+                continue
+            key_text = str(key).strip()
+            candidate_id = key_text.removeprefix("id").removeprefix("digital_human_")
+            if candidate_id and candidate_id in expected_ids:
+                normalized[candidate_id] = value
+        return normalized
+
+    def _normalize_semantic_tags(self, value: Any) -> list[str]:
+        if isinstance(value, str):
+            value = re.split(r"[,;，；]\s*", value)
+        if not isinstance(value, list):
+            return []
+        tags: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text and text not in tags:
+                tags.append(text)
+        return tags[:4]
+
+    def _normalize_reasoning(self, value: Any) -> list[str]:
+        if isinstance(value, str):
+            value = re.split(r"[\n,;，；]\s*", value)
+        if not isinstance(value, list):
+            return []
+        reasoning: list[str] = []
+        for item in value:
+            text = str(item).strip()
+            if text and text not in reasoning:
+                reasoning.append(text)
+        return reasoning[:4]

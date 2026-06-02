@@ -7,10 +7,9 @@ from typing import Any
 
 from .llm_client import LLMClientError, OpenAICompatibleLLMClient
 from .models import StrategyNodePlan, StrategyResult
-from .pipeline import StrategyPipeline
-from .reporting import render_eval_batch_markdown, render_eval_markdown, write_markdown
+from .pipeline import PipelineArtifacts, StrategyPipeline
 
-SCHEMA_VERSION = "eval_v2"
+TRACE_PREVIEW_LIMIT = 25
 
 
 def load_hot_events(input_path: str | Path) -> list[dict[str, Any]]:
@@ -77,7 +76,7 @@ def hot_event_to_pipeline_payload(
     event_id = str(hot_event.get("event_id") or "hot_event")
     event_title = str(hot_event.get("event_title") or event_id)
     event_summary = str(hot_event.get("event_summary") or "").strip()
-    target = str(hot_event.get("target") or "扩大热点信息触达并引导理性讨论。").strip()
+    target = str(hot_event.get("target") or "扩大热点信息触达并引导理性讨论").strip()
     domain = str(hot_event.get("domain") or "general").strip() or "general"
     variants = _normalize_variants(hot_event.get("opinion_variants", []))
 
@@ -89,7 +88,9 @@ def hot_event_to_pipeline_payload(
         for item in (
             event_title,
             event_summary,
+            f"热点领域: {domain}",
             f"传播目标: {target}",
+            "任务约束: 输出影响力事件分发策略，不要按照商品推荐任务理解。",
             "热点叙述变体:",
             variant_lines,
         )
@@ -103,7 +104,7 @@ def hot_event_to_pipeline_payload(
         "event_title": event_title,
         "event_description": event_description,
         "target_goal": target,
-        "target_audience": ["general_public", domain],
+        "target_audience": ["general_public"],
         "constraints": {
             "risk_level": resolved_risk_level,
             "max_selected_nodes": max_selected_nodes,
@@ -128,6 +129,7 @@ def run_hot_event_evaluation(
     allowed_platforms: list[str] | None = None,
     use_llm: bool = True,
     llm_client: Any | None = None,
+    trace_dir: str | Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     events = load_hot_events(input_path)
     hot_event = select_hot_event(events, event_id=event_id)
@@ -143,6 +145,7 @@ def run_hot_event_evaluation(
         allowed_platforms=allowed_platforms,
         use_llm=use_llm,
         llm_client=llm_client,
+        trace_dir=trace_dir,
     )
 
 
@@ -161,6 +164,7 @@ def run_hot_event_evaluations(
     allowed_platforms: list[str] | None = None,
     use_llm: bool = True,
     llm_client: Any | None = None,
+    trace_dir: str | Path | None = None,
 ) -> list[tuple[Path, dict[str, Any]]]:
     events = load_hot_events(input_path)
     selected_events = select_hot_events(
@@ -183,12 +187,10 @@ def run_hot_event_evaluations(
             allowed_platforms=allowed_platforms,
             use_llm=use_llm,
             llm_client=llm_client,
+            trace_dir=trace_dir,
         )
         results.append((output_path, output_payload))
 
-    if results:
-        target_dir = Path(output_dir) if output_dir is not None else Path(workspace_root) / "eval" / "output"
-        write_markdown(target_dir / "output.md", render_eval_batch_markdown(results))
     return results
 
 
@@ -201,12 +203,14 @@ def build_eval_output(
     llm_client: Any | None = None,
 ) -> dict[str, Any]:
     selected_nodes = strategy_result.selected_nodes
-    fallback_nodes = strategy_result.fallback_nodes
     selected_ids = [node.user_id for node in selected_nodes]
     platform = strategy_result.strategy.platform_plan.primary_platform
-    target = str(hot_event.get("target") or strategy_result.event.target_goal or "扩大热点信息触达并引导理性讨论。").strip()
+    target = str(
+        hot_event.get("target") or strategy_result.event.target_goal or "扩大热点信息触达并引导理性讨论"
+    ).strip()
+    variants = _normalize_variants(hot_event.get("opinion_variants", []))
 
-    llm_overrides, llm_meta = _build_llm_node_texts(
+    llm_overrides, _llm_meta = _build_llm_node_texts(
         hot_event=hot_event,
         strategy_result=strategy_result,
         platform=platform,
@@ -216,8 +220,11 @@ def build_eval_output(
         llm_client=llm_client,
     )
 
-    selected_digital_humans: list[dict[str, Any]] = []
-    variants = _normalize_variants(hot_event.get("opinion_variants", []))
+    payload: dict[str, Any] = {
+        "事件名称": str(hot_event.get("event_title") or strategy_result.event.event_title),
+        "选取数字人id组": selected_ids,
+    }
+
     for node in selected_nodes:
         fallback_content = _fallback_content_bundle(
             hot_event=hot_event,
@@ -228,90 +235,25 @@ def build_eval_output(
             selected_ids=selected_ids,
         )
         override_content = llm_overrides.get(node.user_id, {})
-        content_output = {
-            "post_content": override_content.get("post_content") or fallback_content["post_content"],
-            "audience_profile": override_content.get("audience_profile") or fallback_content["audience_profile"],
-            "audience_interaction_strategy": override_content.get("audience_interaction_strategy") or fallback_content["audience_interaction_strategy"],
-            "cross_digital_human_ids": fallback_content["cross_digital_human_ids"],
-            "cross_digital_human_strategy": override_content.get("cross_digital_human_strategy") or fallback_content["cross_digital_human_strategy"],
+
+        payload[node.user_id] = {
+            "时间阶段": _stage_text(node),
+            "发帖频率": _frequency_text(node.frequency_per_day),
+            "发帖平台": platform,
+            "发帖内容": override_content.get("post_content") or fallback_content["post_content"],
+            "目标受众": {
+                "目标群体画像": override_content.get("audience_profile")
+                or fallback_content["audience_profile"],
+                "目标群体交互策略": override_content.get("audience_interaction_strategy")
+                or fallback_content["audience_interaction_strategy"],
+            },
+            "与其他数字人互动策略": {
+                "互动数字人id集合": fallback_content["cross_digital_human_ids"],
+                "互动策略": override_content.get("cross_digital_human_strategy")
+                or fallback_content["cross_digital_human_strategy"],
+            },
         }
-        llm_generated_fields = sorted(key for key in override_content.keys() if key in {
-            "post_content",
-            "audience_profile",
-            "audience_interaction_strategy",
-            "cross_digital_human_strategy",
-        })
 
-        selected_digital_humans.append(
-            {
-                **_digital_human_summary(node=node, platform=platform),
-                "content_output": content_output,
-                "content_generation": {
-                    "llm_generated_fields": llm_generated_fields,
-                    "fallback_fields": sorted(
-                        field
-                        for field in (
-                            "post_content",
-                            "audience_profile",
-                            "audience_interaction_strategy",
-                            "cross_digital_human_strategy",
-                        )
-                        if field not in llm_generated_fields
-                    ),
-                },
-            }
-        )
-
-    fallback_digital_humans = [
-        _digital_human_summary(node=node, platform=platform)
-        for node in fallback_nodes
-    ]
-
-    summary = {
-        "event_id": strategy_result.event.event_id,
-        "event_title": str(hot_event.get("event_title") or strategy_result.event.event_title),
-        "event_type": strategy_result.event.event_type,
-        "risk_level": strategy_result.strategy.risk_control.risk_level,
-        "primary_platform": platform,
-        "campaign_window_hours": strategy_result.event.constraints.campaign_window_hours,
-        "selected_count": len(selected_nodes),
-        "fallback_count": len(fallback_nodes),
-        "selected_role_distribution": strategy_result.selection_summary.selected_role_distribution,
-        "selected_digital_human_ids": selected_ids,
-        "avg_selected_final_score": strategy_result.summary.avg_selected_final_score,
-    }
-
-    payload: dict[str, Any] = {
-        "meta": {
-            "schema_version": SCHEMA_VERSION,
-            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "source": "hot_event_eval",
-            "generator_mode": _generator_mode(llm_meta),
-            "llm": llm_meta,
-        },
-        "event": {
-            "event_id": str(hot_event.get("event_id") or strategy_result.event.event_id),
-            "event_title": str(hot_event.get("event_title") or strategy_result.event.event_title),
-            "event_summary": str(hot_event.get("event_summary") or "").strip(),
-            "domain": str(hot_event.get("domain") or "general").strip() or "general",
-            "target": target,
-            "is_synthetic": bool(hot_event.get("is_synthetic", False)),
-            "opinion_variants": variants,
-        },
-        "summary": summary,
-        "stage_plans": [item.model_dump(mode="json") for item in strategy_result.stage_plans],
-        "five_dimensions": {
-            "target_object": strategy_result.strategy.target_object,
-            "time_plan": strategy_result.strategy.time_plan,
-            "frequency_plan": strategy_result.strategy.frequency_plan.model_dump(mode="json"),
-            "platform_plan": strategy_result.strategy.platform_plan.model_dump(mode="json"),
-            "content_plan": strategy_result.strategy.content_plan.model_dump(mode="json"),
-        },
-        "selected_digital_humans": selected_digital_humans,
-        "fallback_digital_humans": fallback_digital_humans,
-        "risk_control": strategy_result.strategy.risk_control.model_dump(mode="json"),
-        "explainability": strategy_result.strategy.explainability,
-    }
     return payload
 
 
@@ -328,8 +270,13 @@ def _run_hot_event_evaluation(
     allowed_platforms: list[str] | None = None,
     use_llm: bool = True,
     llm_client: Any | None = None,
+    trace_dir: str | Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     root = Path(workspace_root)
+    client = llm_client
+    if client is None and use_llm:
+        client = OpenAICompatibleLLMClient.from_env_files(root)
+
     pipeline_payload = hot_event_to_pipeline_payload(
         hot_event,
         max_selected_nodes=max_selected_nodes,
@@ -339,74 +286,40 @@ def _run_hot_event_evaluation(
         allowed_platforms=allowed_platforms,
     )
 
-    strategy_result = StrategyPipeline(product_name="abc_reading").run(
+    pipeline = StrategyPipeline(product_name="abc_reading")
+    artifacts = pipeline.run_with_artifacts(
         workspace_root=root,
         event_input=pipeline_payload,
         profile_limit=profile_limit,
+        use_llm=use_llm,
+        llm_client=client,
     )
     output_payload = build_eval_output(
         hot_event=hot_event,
-        strategy_result=strategy_result,
+        strategy_result=artifacts.strategy_result,
         workspace_root=root,
         use_llm=use_llm,
-        llm_client=llm_client,
+        llm_client=client,
     )
 
     target_dir = Path(output_dir) if output_dir is not None else root / "eval" / "output"
-    output_path = target_dir / f"{strategy_result.event.event_id}_strategy_output.json"
-    markdown_path = output_path.with_suffix(".md")
-    output_payload["meta"]["output_files"] = {
-        "json": str(output_path),
-        "markdown": str(markdown_path),
-    }
-
+    output_path = target_dir / f"{artifacts.strategy_result.event.event_id}_strategy_output.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(output_payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    write_markdown(markdown_path, render_eval_markdown(output_payload))
+
+    _write_pipeline_trace(
+        workspace_root=root,
+        trace_dir=trace_dir,
+        hot_event=hot_event,
+        pipeline_payload=pipeline_payload,
+        artifacts=artifacts,
+        final_output=output_payload,
+        output_path=output_path,
+    )
     return output_path, output_payload
-
-
-def _digital_human_summary(
-    *,
-    node: StrategyNodePlan,
-    platform: str,
-) -> dict[str, Any]:
-    return {
-        "selection_rank": node.selection_rank,
-        "user_id": node.user_id,
-        "user_name": node.user_name,
-        "selected_role": node.selected_role,
-        "dispatch_stage": node.dispatch_stage,
-        "stage_text": _stage_text(node),
-        "dispatch_priority": node.dispatch_priority,
-        "timing_window": node.timing_window,
-        "frequency_per_day": node.frequency_per_day,
-        "frequency_text": _frequency_text(node.frequency_per_day),
-        "platform": platform,
-        "final_score": node.final_score,
-        "risk_level": node.risk_level,
-        "risk_flags": node.risk_flags,
-        "manual_review_required": node.manual_review_required,
-        "matched_keywords": node.matched_keywords,
-        "recommended_action": node.recommended_action,
-        "suggested_content_style": node.suggested_content_style,
-        "selection_explanation": node.rationale,
-        "metrics": {
-            "influence_score": node.influence_score,
-            "diffusion_score": node.diffusion_score,
-            "topic_match_score": node.topic_match_score,
-            "stability_score": node.stability_score,
-            "follower_count": node.follower_count,
-            "friend_count": node.friend_count,
-            "neighbor_count": node.neighbor_count,
-            "mutual_neighbor_count": node.mutual_neighbor_count,
-            "received_interaction_count": node.received_interaction_count,
-            "made_interaction_count": node.made_interaction_count,
-        },
-    }
 
 
 def _build_llm_node_texts(
@@ -462,9 +375,8 @@ def _build_llm_node_texts(
 
     system_prompt = (
         "你是影响力事件分发策略的内容生成助手。"
-        "请只为系统已经筛选出的匿名传播节点生成中文执行文案。"
+        "请仅为已选出的匿名数字人生成中文执行文案。"
         "必须返回严格 JSON，不要输出 Markdown。"
-        "不要编造真实身份、平台权限或未给出的外部事实。"
     )
     user_prompt = _llm_prompt(
         hot_event=hot_event,
@@ -483,19 +395,17 @@ def _build_llm_node_texts(
         metadata["fallback_reason"] = f"llm_request_failed:{type(exc).__name__}"
         return {}, metadata
 
-    llm_nodes = response.get("nodes", response)
-    if not isinstance(llm_nodes, dict):
+    llm_nodes = _extract_llm_node_mapping(
+        response=response,
+        expected_ids=[node.user_id for node in eligible_nodes],
+    )
+    if not llm_nodes:
         metadata["fallback_reason"] = "invalid_llm_response"
         return {}, metadata
 
     overrides: dict[str, dict[str, str]] = {}
     for node in eligible_nodes:
-        raw_node = (
-            llm_nodes.get(node.user_id)
-            or llm_nodes.get(str(node.user_id))
-            or llm_nodes.get(f"id{node.user_id}")
-            or llm_nodes.get(f"digital_human_{node.user_id}")
-        )
+        raw_node = llm_nodes.get(node.user_id)
         if not isinstance(raw_node, dict):
             continue
         cleaned = _clean_llm_node_fields(raw_node)
@@ -527,7 +437,10 @@ def _fallback_content_bundle(
         ),
         "audience_interaction_strategy": _audience_interaction_text(node),
         "cross_digital_human_ids": [item for item in selected_ids if item != node.user_id],
-        "cross_digital_human_strategy": _cross_digital_human_strategy(node, strategy_result.selected_nodes),
+        "cross_digital_human_strategy": _cross_digital_human_strategy(
+            node,
+            strategy_result.selected_nodes,
+        ),
     }
 
 
@@ -568,18 +481,13 @@ def _llm_prompt(
                     "diffusion_score": node.diffusion_score,
                     "topic_match_score": node.topic_match_score,
                     "stability_score": node.stability_score,
-                    "follower_count": node.follower_count,
-                    "friend_count": node.friend_count,
-                    "neighbor_count": node.neighbor_count,
-                    "received_interaction_count": node.received_interaction_count,
-                    "made_interaction_count": node.made_interaction_count,
                 },
                 "selection_reasons": node.rationale,
             }
         )
 
     prompt_payload = {
-        "task": "请为每个 eligible node 生成四个中文文案字段，用于替换规则模板内容。",
+        "task": "为每个候选数字人生成结构化分发文案。",
         "event": {
             "event_id": hot_event.get("event_id"),
             "domain": hot_event.get("domain"),
@@ -588,21 +496,21 @@ def _llm_prompt(
             "target": target,
             "opinion_variants": variants,
         },
-        "global_constraints": [
-            "保持客观、克制，适合公共热点信息传播。",
-            "不要编造未给出的外部事实或真实平台执行权限。",
-            "每个字段使用中文自然语言，长度控制在 1 到 3 句话。",
-            "四个字段必须相互区分，不要复用同一句模板。",
-            "返回 nodes 对象时，key 必须使用 id + user_id，例如 id81584。",
+        "constraints": [
+            "保持客观克制，适合公共热点信息传播。",
+            "不要编造未给出的外部事实或真实平台权限。",
+            "每个字段使用 1 到 3 句中文自然语言。",
+            "高粉丝量不能替代主题相关性。",
+            "返回 nodes 对象时，key 使用 id+user_id，例如 id81584。",
         ],
         "eligible_nodes": nodes_payload,
         "required_json_schema": {
             "nodes": {
                 "id81584": {
-                    "post_content": "生成的发帖内容或执行文案",
-                    "audience_profile": "目标群体画像说明",
-                    "audience_interaction_strategy": "目标群体互动策略说明",
-                    "cross_digital_human_strategy": "与其他数字人的互动协同策略",
+                    "post_content": "发帖内容",
+                    "audience_profile": "目标群体画像",
+                    "audience_interaction_strategy": "目标群体交互策略",
+                    "cross_digital_human_strategy": "与其他数字人的互动策略",
                 }
             }
         },
@@ -614,8 +522,15 @@ def _clean_llm_node_fields(raw_node: dict[str, Any]) -> dict[str, str]:
     field_aliases = {
         "post_content": ("post_content", "发帖内容"),
         "audience_profile": ("audience_profile", "目标群体画像"),
-        "audience_interaction_strategy": ("audience_interaction_strategy", "目标群体互动策略"),
-        "cross_digital_human_strategy": ("cross_digital_human_strategy", "互动策略", "与其他数字人互动策略"),
+        "audience_interaction_strategy": (
+            "audience_interaction_strategy",
+            "目标群体交互策略",
+        ),
+        "cross_digital_human_strategy": (
+            "cross_digital_human_strategy",
+            "互动策略",
+            "与其他数字人互动策略",
+        ),
     }
 
     cleaned: dict[str, str] = {}
@@ -626,6 +541,75 @@ def _clean_llm_node_fields(raw_node: dict[str, Any]) -> dict[str, str]:
                 cleaned[normalized_name] = value.strip()
                 break
     return cleaned
+
+
+def _extract_llm_node_mapping(
+    *,
+    response: dict[str, Any],
+    expected_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    if not isinstance(response, dict):
+        return {}
+
+    for key in ("nodes", "candidates", "results", "items", "data"):
+        normalized = _normalize_llm_container(response.get(key), expected_ids)
+        if normalized:
+            return normalized
+
+    normalized = _normalize_llm_container(response, expected_ids)
+    if normalized:
+        return normalized
+
+    for value in response.values():
+        normalized = _normalize_llm_container(value, expected_ids)
+        if normalized:
+            return normalized
+    return {}
+
+
+def _normalize_llm_container(
+    container: Any,
+    expected_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    if isinstance(container, list):
+        normalized: dict[str, dict[str, Any]] = {}
+        for item in container:
+            if not isinstance(item, dict):
+                continue
+            user_id = str(
+                item.get("user_id")
+                or item.get("id")
+                or item.get("node_id")
+                or item.get("digital_human_id")
+                or ""
+            ).strip()
+            if user_id:
+                normalized[user_id] = item
+        return normalized
+
+    if not isinstance(container, dict):
+        return {}
+
+    normalized: dict[str, dict[str, Any]] = {}
+    for expected_id in expected_ids:
+        raw_node = (
+            container.get(expected_id)
+            or container.get(str(expected_id))
+            or container.get(f"id{expected_id}")
+            or container.get(f"digital_human_{expected_id}")
+        )
+        if isinstance(raw_node, dict):
+            normalized[str(expected_id)] = raw_node
+    if normalized:
+        return normalized
+
+    for key, value in container.items():
+        if not isinstance(value, dict):
+            continue
+        candidate_id = str(key).strip().removeprefix("id").removeprefix("digital_human_")
+        if candidate_id in expected_ids:
+            normalized[candidate_id] = value
+    return normalized
 
 
 def _stage_text(node: StrategyNodePlan) -> str:
@@ -654,7 +638,7 @@ def _post_content_text(
     variant_hint = ""
     if variants:
         variant_index = max(node.selection_rank - 1, 0) % len(variants)
-        variant_hint = f"参考叙述：{variants[variant_index]}"
+        variant_hint = f"参考叙述变体：{variants[variant_index]}"
 
     parts = [
         f"传播目标：{target}",
@@ -674,9 +658,9 @@ def _audience_profile_text(
     target_objects = "、".join(strategy_result.strategy.target_object) or "泛公众"
     domain = str(hot_event.get("domain") or "general")
     return (
-        f"重点面向 {target_objects}，优先覆盖对 {domain} 议题敏感、"
-        f"关注公共信息和热点解释的人群。该节点 final_score={node.final_score:.3f}，"
-        f"influence_score={node.influence_score:.3f}，diffusion_score={node.diffusion_score:.3f}。"
+        f"重点面向 {target_objects}，优先覆盖关注 {domain} 议题、"
+        "需要事件解释与阶段性信息更新的人群。"
+        f"该节点 final_score={node.final_score:.3f}。"
     )
 
 
@@ -715,7 +699,7 @@ def _cross_digital_human_strategy(
     if node.selected_role == "interaction_response_node":
         return (
             f"优先评论核心发布节点 {','.join(core_ids) or '-'} 的主帖，"
-            "集中回复评论区高频问题，并将讨论回收至统一口径。"
+            "集中回复评论区高频问题，并将讨论回收到统一口径。"
         )
     if node.selected_role == "amplification_node":
         return (
@@ -739,9 +723,111 @@ def _infer_hot_event_risk_level(domain: str) -> str:
     return "low"
 
 
-def _generator_mode(llm_meta: dict[str, Any]) -> str:
-    if not llm_meta.get("requested"):
-        return "rule_only"
-    if llm_meta.get("used"):
-        return "llm_enhanced"
-    return "llm_fallback"
+def _write_pipeline_trace(
+    *,
+    workspace_root: Path,
+    trace_dir: str | Path | None,
+    hot_event: dict[str, Any],
+    pipeline_payload: dict[str, Any],
+    artifacts: PipelineArtifacts,
+    final_output: dict[str, Any],
+    output_path: Path,
+) -> None:
+    target_root = Path(trace_dir) if trace_dir is not None else workspace_root / "tests" / "pipeline_step_outputs"
+    event_dir = target_root / artifacts.strategy_result.event.event_id
+    event_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_json(
+        event_dir / "00_hot_event_input.json",
+        hot_event,
+    )
+    _write_json(
+        event_dir / "01_pipeline_payload.json",
+        pipeline_payload,
+    )
+    _write_json(
+        event_dir / "02_event_parser_output.json",
+        artifacts.event.model_dump(mode="json"),
+    )
+    _write_json(
+        event_dir / "03_feature_builder_output.json",
+        {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "summary": artifacts.feature_result.summary.model_dump(mode="json"),
+            "event_keywords": {
+                "event_title": artifacts.event.event_title,
+                "extracted_keywords": artifacts.event.extracted_keywords,
+                "semantic_tags": artifacts.event.semantic_tags,
+                "target_audience": artifacts.event.target_audience,
+            },
+            "llm_feature_used_count": sum(
+                1 for node in artifacts.feature_result.node_features if node.llm_feature_used
+            ),
+            "preview_top_features": [
+                node.model_dump(mode="json")
+                for node in artifacts.feature_result.node_features[:TRACE_PREVIEW_LIMIT]
+            ],
+        },
+    )
+    _write_json(
+        event_dir / "04_scorer_output.json",
+        {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "summary": artifacts.score_result.summary.model_dump(mode="json"),
+            "eligible_count": sum(1 for node in artifacts.score_result.node_scores if node.eligible),
+            "preview_top_scores": [
+                node.model_dump(mode="json")
+                for node in artifacts.score_result.node_scores[:TRACE_PREVIEW_LIMIT]
+            ],
+        },
+    )
+    _write_json(
+        event_dir / "05_selector_output.json",
+        {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "summary": artifacts.selection_result.summary.model_dump(mode="json"),
+            "selected_nodes": [
+                node.model_dump(mode="json")
+                for node in artifacts.selection_result.selected_nodes
+            ],
+            "fallback_nodes": [
+                node.model_dump(mode="json")
+                for node in artifacts.selection_result.fallback_nodes[:TRACE_PREVIEW_LIMIT]
+            ],
+        },
+    )
+    _write_json(
+        event_dir / "06_strategy_generator_output.json",
+        {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "summary": artifacts.strategy_result.summary.model_dump(mode="json"),
+            "stage_plans": [
+                item.model_dump(mode="json")
+                for item in artifacts.strategy_result.stage_plans
+            ],
+            "selected_nodes": [
+                node.model_dump(mode="json")
+                for node in artifacts.strategy_result.selected_nodes
+            ],
+            "fallback_nodes": [
+                node.model_dump(mode="json")
+                for node in artifacts.strategy_result.fallback_nodes[:TRACE_PREVIEW_LIMIT]
+            ],
+            "strategy": artifacts.strategy_result.strategy.model_dump(mode="json"),
+        },
+    )
+    _write_json(
+        event_dir / "07_final_output.json",
+        {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "final_output_path": str(output_path),
+            "payload": final_output,
+        },
+    )
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )

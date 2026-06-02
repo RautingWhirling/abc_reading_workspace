@@ -39,6 +39,7 @@ dist/
 # Future generated outputs
 outputs/
 reports/
+tests/pipeline_step_outputs/
 
 # Local datasets
 data/

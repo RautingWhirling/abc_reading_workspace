@@ -266,6 +266,7 @@ class StrategyGenerator:
         rationale = _dedupe_preserve_order(
             [
                 *node.selection_reasons[:4],
+                *[reason for reason in node.selection_reasons if reason.startswith("llm_selector=")],
                 f"matched_keywords={','.join(node.matched_keywords)}" if node.matched_keywords else "",
                 f"risk_level={node.risk_level}",
                 "manual_review_required" if node.manual_review_required else "",
@@ -293,8 +294,10 @@ class StrategyGenerator:
             diffusion_score=node.diffusion_score,
             topic_match_score=node.topic_match_score,
             stability_score=node.stability_score,
+            llm_feature_score=node.llm_feature_score,
             risk_flags=node.risk_flags,
             matched_keywords=node.matched_keywords,
+            semantic_tags=node.semantic_tags,
             timing_window=timing_window,
             frequency_per_day=frequency,
             recommended_action=recommended_action,

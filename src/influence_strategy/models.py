@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -97,6 +97,16 @@ class EventConstraints(BaseModel):
     allowed_platforms: list[str] = Field(default_factory=lambda: ["weibo_simulated"])
 
 
+class EventDispatchPreferences(BaseModel):
+    candidate_pool_size: int = Field(default=24, ge=6, le=120)
+    rerank_top_k: int = Field(default=12, ge=3, le=40)
+    semantic_weight: float = Field(default=0.35, ge=0.0, le=1.0)
+    diversity_weight: float = Field(default=0.20, ge=0.0, le=1.0)
+    risk_weight: float = Field(default=0.20, ge=0.0, le=1.0)
+    preferred_roles: list[str] = Field(default_factory=list)
+    preferred_narrative: list[str] = Field(default_factory=list)
+
+
 class ParsedEvent(BaseModel):
     event_id: str
     product_name: str = "abc_reading"
@@ -107,8 +117,15 @@ class ParsedEvent(BaseModel):
     target_audience: list[str] = Field(default_factory=list)
     extracted_keywords: list[str] = Field(default_factory=list)
     constraints: EventConstraints = Field(default_factory=EventConstraints)
+    semantic_tags: list[str] = Field(default_factory=list)
+    narrative_frames: list[str] = Field(default_factory=list)
+    sensitive_entities: list[str] = Field(default_factory=list)
+    target_roles: list[str] = Field(default_factory=list)
+    negative_constraints: list[str] = Field(default_factory=list)
+    dispatch_preferences: EventDispatchPreferences = Field(default_factory=EventDispatchPreferences)
     parser_name: str = "rule_based_v1"
     reasoning: list[str] = Field(default_factory=list)
+    llm_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeFeature(BaseModel):
@@ -142,8 +159,19 @@ class NodeFeature(BaseModel):
     activity_score: float = 0.0
     stability_score: float = 0.0
     feature_ready_score: float = 0.0
+    semantic_profile: str = ""
+    semantic_tags: list[str] = Field(default_factory=list)
+    event_semantic_relevance_score: float = 0.0
+    audience_fit_score: float = 0.0
+    role_fit_score: float = 0.0
+    narrative_fit_score: float = 0.0
+    risk_conflict_score: float = 0.0
+    novelty_score: float = 0.0
+    llm_feature_score: float = 0.0
+    llm_feature_used: bool = False
     keyword_hit_count: int = 0
     matched_keywords: list[str] = Field(default_factory=list)
+    candidate_reasoning: list[str] = Field(default_factory=list)
 
 
 class FeatureBuildSummary(BaseModel):
@@ -241,8 +269,10 @@ class StrategyNodePlan(BaseModel):
     diffusion_score: float = 0.0
     topic_match_score: float = 0.0
     stability_score: float = 0.0
+    llm_feature_score: float = 0.0
     risk_flags: list[str] = Field(default_factory=list)
     matched_keywords: list[str] = Field(default_factory=list)
+    semantic_tags: list[str] = Field(default_factory=list)
     timing_window: str = ""
     frequency_per_day: int = Field(default=1, ge=1, le=24)
     recommended_action: str = ""

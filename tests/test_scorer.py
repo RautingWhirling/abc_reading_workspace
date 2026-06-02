@@ -172,6 +172,93 @@ class ScorerTest(unittest.TestCase):
             self.assertIn("risk_score", frame.columns)
             self.assertIn("eligible", frame.columns)
 
+    def test_high_influence_irrelevant_node_is_filtered(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            raw_dir = root / "data" / "raw"
+            derived_dir = root / "data" / "derived"
+            raw_dir.mkdir(parents=True)
+            derived_dir.mkdir(parents=True)
+
+            product_info = {"product_name": "abc_reading", "influencer_ids": ["2"]}
+            profiles = {
+                "1": {
+                    "user_id": 1,
+                    "user_name": "shipping_node",
+                    "user_followers": 200,
+                    "user_friends": 40,
+                    "user_interests": ["shipping", "energy", "logistics"],
+                    "user_description": "shipping and logistics updates",
+                },
+                "2": {
+                    "user_id": 2,
+                    "user_name": "lifestyle_star",
+                    "user_followers": 500000,
+                    "user_friends": 600,
+                    "user_interests": ["travel", "food", "photography"],
+                    "user_description": "travel and lifestyle account",
+                },
+            }
+            enriched_profiles = {
+                "1": {
+                    **profiles["1"],
+                    "graph_attributes": {
+                        "neighbor_count": 2,
+                        "received_interaction_count": 5,
+                        "made_interaction_count": 3,
+                        "isolated": False,
+                    },
+                    "neighbors": [],
+                },
+                "2": {
+                    **profiles["2"],
+                    "graph_attributes": {
+                        "neighbor_count": 12,
+                        "received_interaction_count": 30,
+                        "made_interaction_count": 10,
+                        "isolated": False,
+                    },
+                    "neighbors": [],
+                },
+            }
+
+            (raw_dir / "abc_reading_product_info.json").write_text(
+                json.dumps(product_info, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (raw_dir / "abc_reading_profile.graph.anon").write_text(
+                json.dumps(profiles, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (derived_dir / "abc_reading_profile_with_neighbors.graph.anon").write_text(
+                json.dumps(enriched_profiles, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            event = RuleBasedEventParser().parse(
+                {
+                    "event_title": "Shipping disruption",
+                    "event_description": "Shipping disruption affects energy logistics.",
+                    "target_goal": "awareness",
+                    "target_audience": ["general_public"],
+                }
+            )
+            feature_result = FeatureBuilder().build_features(
+                product_context=DataLoader(root).load_product_context(),
+                profiles=DataLoader(root).load_profiles(),
+                event=event,
+                enriched_profiles=DataLoader(root).load_enriched_profiles(),
+                source_user_ids=set(),
+            )
+            score_result = Scorer().score(feature_result)
+
+            shipping_node = next(node for node in score_result.node_scores if node.user_id == "1")
+            lifestyle_node = next(node for node in score_result.node_scores if node.user_id == "2")
+
+            self.assertTrue(shipping_node.eligible)
+            self.assertFalse(lifestyle_node.eligible)
+            self.assertIn("generic_high_influence_mismatch", lifestyle_node.risk_flags)
+
 
 if __name__ == "__main__":
     unittest.main()

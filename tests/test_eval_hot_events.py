@@ -26,6 +26,70 @@ class FakeLLMClient:
 
     def generate_json(self, *, system_prompt: str, user_prompt: str) -> dict[str, dict]:
         payload = json.loads(user_prompt)
+        if "raw_event" in payload and "fallback_parse" in payload:
+            return {
+                "event_type": "general_influence_event",
+                "target_goal": "awareness",
+                "target_audience": ["general_public", "technology"],
+                "extracted_keywords": ["chip", "supply", "industry_chain"],
+                "risk_level": "medium",
+                "semantic_tags": ["芯片供应", "产业链影响"],
+                "narrative_frames": ["行业解释", "风险提示"],
+                "target_roles": [
+                    "core_publish_node",
+                    "interaction_response_node",
+                    "amplification_node",
+                ],
+                "negative_constraints": ["避免绝对化表达"],
+                "dispatch_preferences": {
+                    "candidate_pool_size": 12,
+                    "rerank_top_k": 6,
+                    "semantic_weight": 0.35,
+                    "diversity_weight": 0.20,
+                    "risk_weight": 0.20,
+                },
+                "reasoning": ["llm event parser"],
+            }
+        if "candidate_cards" in payload:
+            nodes = {}
+            for index, node in enumerate(payload["candidate_cards"]):
+                user_id = node["user_id"]
+                nodes[f"id{user_id}"] = {
+                    "semantic_relevance_score": max(0.2, 0.92 - index * 0.08),
+                    "audience_fit_score": max(0.2, 0.88 - index * 0.06),
+                    "role_fit_score": max(0.2, 0.84 - index * 0.04),
+                    "narrative_fit_score": max(0.2, 0.80 - index * 0.04),
+                    "risk_conflict_score": 0.08,
+                    "novelty_score": 0.45 + 0.03 * index,
+                    "semantic_tags": [f"tag_{user_id}", "event_fit"],
+                    "reasoning": [f"candidate_{user_id}_fit"],
+                }
+            return {"nodes": nodes}
+        if "shortlist" in payload and "constraints" in payload:
+            shortlist = payload["shortlist"]
+            selected_order = []
+            role_cycle = [
+                "core_publish_node",
+                "interaction_response_node",
+                "amplification_node",
+            ]
+            for index, node in enumerate(shortlist[: payload["constraints"]["max_selected_nodes"]]):
+                selected_order.append(
+                    {
+                        "user_id": node["user_id"],
+                        "recommended_role": role_cycle[index % len(role_cycle)],
+                        "reasoning": [f"selector_pick_{node['user_id']}"],
+                    }
+                )
+            return {
+                "selected_order": selected_order,
+                "fallback_order": [
+                    node["user_id"]
+                    for node in shortlist[payload["constraints"]["max_selected_nodes"] :]
+                ],
+                "global_notes": ["llm selector used"],
+            }
+
         nodes = {}
         for node in payload["eligible_nodes"]:
             user_id = node["user_id"]
@@ -54,15 +118,17 @@ class EvalHotEventsTest(unittest.TestCase):
         self.assertEqual(payload["constraints"]["max_selected_nodes"], 5)
         self.assertEqual(payload["constraints"]["risk_level"], "low")
         self.assertIn("10. Variant 10", payload["event_description"])
-        self.assertIn("technology", payload["target_audience"])
+        self.assertIn("热点领域: technology", payload["event_description"])
+        self.assertEqual(payload["target_audience"], ["general_public"])
 
-    def test_run_hot_event_evaluation_writes_structured_json_and_markdown(self) -> None:
+    def test_run_hot_event_evaluation_writes_structured_json_and_trace_outputs(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             self._write_minimal_workspace(root)
 
             eval_dir = root / "eval"
             eval_dir.mkdir(parents=True)
+            trace_dir = root / "tests" / "pipeline_step_outputs"
             input_path = eval_dir / "hot_event_opinion_variants.json"
             input_path.write_text(
                 json.dumps(
@@ -90,32 +156,31 @@ class EvalHotEventsTest(unittest.TestCase):
                 input_path=input_path,
                 output_dir=eval_dir / "output",
                 use_llm=False,
+                trace_dir=trace_dir,
             )
 
             self.assertTrue(output_path.exists())
-            self.assertTrue(output_path.with_suffix(".md").exists())
-            self.assertEqual(payload["meta"]["schema_version"], "eval_v2")
-            self.assertEqual(payload["meta"]["generator_mode"], "rule_only")
-            self.assertEqual(payload["summary"]["event_title"], "AI chip supply focus")
-            self.assertGreaterEqual(payload["summary"]["selected_count"], 1)
-            self.assertIn("selected_digital_human_ids", payload["summary"])
-            self.assertIn("target_object", payload["five_dimensions"])
-            self.assertIn("stage_plans", payload)
-            self.assertIn("selected_digital_humans", payload)
-            self.assertIn("fallback_digital_humans", payload)
-            self.assertIn("risk_control", payload)
-            self.assertIn("explainability", payload)
+            self.assertEqual(payload["事件名称"], "AI chip supply focus")
+            self.assertIn("选取数字人id组", payload)
+            self.assertTrue(payload["选取数字人id组"])
 
-            first_human = payload["selected_digital_humans"][0]
-            self.assertIn("stage_text", first_human)
-            self.assertIn("frequency_text", first_human)
-            self.assertRegex(first_human["frequency_text"], r"^\d+/day$")
-            self.assertIn("content_output", first_human)
-            self.assertIn("post_content", first_human["content_output"])
-            self.assertIn(
-                "Explain the impact of chip supply changes on the industry chain.",
-                first_human["content_output"]["post_content"],
-            )
+            first_id = payload["选取数字人id组"][0]
+            first_human = payload[first_id]
+            self.assertIn("时间阶段", first_human)
+            self.assertIn("发帖频率", first_human)
+            self.assertRegex(first_human["发帖频率"], r"^\d+/day$")
+            self.assertIn("发帖内容", first_human)
+            self.assertIn("目标受众", first_human)
+            self.assertIn("与其他数字人互动策略", first_human)
+
+            event_trace_dir = trace_dir / "hot_event_eval_001"
+            self.assertTrue((event_trace_dir / "00_hot_event_input.json").exists())
+            self.assertTrue((event_trace_dir / "02_event_parser_output.json").exists())
+            self.assertTrue((event_trace_dir / "03_feature_builder_output.json").exists())
+            self.assertTrue((event_trace_dir / "04_scorer_output.json").exists())
+            self.assertTrue((event_trace_dir / "05_selector_output.json").exists())
+            self.assertTrue((event_trace_dir / "06_strategy_generator_output.json").exists())
+            self.assertTrue((event_trace_dir / "07_final_output.json").exists())
 
     def test_run_hot_event_evaluation_replaces_text_fields_with_llm_content(self) -> None:
         with TemporaryDirectory() as tmpdir:
@@ -145,32 +210,28 @@ class EvalHotEventsTest(unittest.TestCase):
                 input_path=input_path,
                 output_dir=eval_dir / "output",
                 llm_client=FakeLLMClient(),
+                trace_dir=root / "tests" / "pipeline_step_outputs",
             )
 
             self.assertTrue(output_path.exists())
-            self.assertEqual(payload["meta"]["generator_mode"], "llm_enhanced")
-            self.assertTrue(payload["meta"]["llm"]["used"])
-
-            first_human = payload["selected_digital_humans"][0]
-            self.assertTrue(first_human["content_generation"]["llm_generated_fields"])
+            first_id = payload["选取数字人id组"][0]
+            first_human = payload[first_id]
+            self.assertTrue(first_human["发帖内容"].startswith("LLM generated post content"))
             self.assertTrue(
-                first_human["content_output"]["post_content"].startswith("LLM generated post content")
+                first_human["目标受众"]["目标群体画像"].startswith("LLM generated audience profile")
             )
             self.assertTrue(
-                first_human["content_output"]["audience_profile"].startswith("LLM generated audience profile")
-            )
-            self.assertTrue(
-                first_human["content_output"]["audience_interaction_strategy"].startswith(
+                first_human["目标受众"]["目标群体交互策略"].startswith(
                     "LLM generated interaction strategy"
                 )
             )
             self.assertTrue(
-                first_human["content_output"]["cross_digital_human_strategy"].startswith(
+                first_human["与其他数字人互动策略"]["互动策略"].startswith(
                     "LLM generated collaboration strategy"
                 )
             )
 
-    def test_run_hot_event_evaluations_writes_first_n_events_and_batch_markdown(self) -> None:
+    def test_run_hot_event_evaluations_writes_first_n_events_only(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             self._write_minimal_workspace(root)
@@ -205,6 +266,7 @@ class EvalHotEventsTest(unittest.TestCase):
                 output_dir=eval_dir / "output",
                 event_limit=2,
                 use_llm=False,
+                trace_dir=root / "tests" / "pipeline_step_outputs",
             )
 
             self.assertEqual(len(results), 2)
@@ -215,10 +277,9 @@ class EvalHotEventsTest(unittest.TestCase):
                     "hot_event_eval_002_strategy_output.json",
                 ],
             )
-            self.assertTrue((eval_dir / "output" / "hot_event_eval_001_strategy_output.md").exists())
-            self.assertTrue((eval_dir / "output" / "hot_event_eval_002_strategy_output.md").exists())
-            self.assertTrue((eval_dir / "output" / "output.md").exists())
-            self.assertFalse((eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists())
+            self.assertFalse(
+                (eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists()
+            )
 
     def _write_minimal_workspace(self, root: Path) -> None:
         raw_dir = root / "data" / "raw"
@@ -235,27 +296,27 @@ class EvalHotEventsTest(unittest.TestCase):
         profiles = {
             "1": {
                 "user_id": 1,
-                "user_name": "core_reader",
+                "user_name": "core_industry_observer",
                 "user_followers": 2400,
                 "user_friends": 80,
-                "user_interests": ["family_reading", "english_learning"],
-                "user_description": "Focus on family reading and english learning discussions.",
+                "user_interests": ["chip_supply", "industry_chain", "ai_infrastructure"],
+                "user_description": "Focus on chip supply, semiconductor industry chain, and AI infrastructure updates.",
             },
             "2": {
                 "user_id": 2,
-                "user_name": "amplifier",
+                "user_name": "amplifier_supply_chain",
                 "user_followers": 650,
                 "user_friends": 90,
-                "user_interests": ["content_diffusion", "reading_activity"],
-                "user_description": "Suitable for secondary diffusion and hot topic retelling.",
+                "user_interests": ["semiconductor", "market_update", "content_diffusion"],
+                "user_description": "Suitable for secondary diffusion of semiconductor and supply chain discussions.",
             },
             "3": {
                 "user_id": 3,
-                "user_name": "responder",
+                "user_name": "responder_qa",
                 "user_followers": 380,
                 "user_friends": 50,
-                "user_interests": ["qa", "education_exchange"],
-                "user_description": "Good at comment interaction and answering questions.",
+                "user_interests": ["industry_qa", "technology_policy", "education_exchange"],
+                "user_description": "Good at comment interaction and answering technology policy questions.",
             },
         }
         interactions = {

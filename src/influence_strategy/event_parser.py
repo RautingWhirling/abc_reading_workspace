@@ -1,15 +1,45 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from rapidfuzz import fuzz
 
-from .models import EventConstraints, ParsedEvent
+from .llm_client import LLMClientError, OpenAICompatibleLLMClient
+from .models import EventConstraints, EventDispatchPreferences, ParsedEvent
+from .prompts import build_event_parser_system_prompt, build_event_parser_user_prompt
 
 _SPACE_RE = re.compile(r"\s+")
 _NON_TEXT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
+_GENERIC_TERM_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_+#./-]{1,31}|[\u4e00-\u9fff]{2,16}")
+
+GENERIC_STOPWORDS = {
+    "event",
+    "general_public",
+    "hot",
+    "topic",
+    "target",
+    "goal",
+    "event_id",
+    "product_name",
+    "传播",
+    "信息",
+    "事件",
+    "热点",
+    "话题",
+    "内容",
+    "平台",
+    "受众",
+    "目标",
+    "阶段",
+    "策略",
+    "讨论",
+    "发布",
+    "回应",
+    "影响",
+}
 
 EVENT_TYPE_RULES: dict[str, tuple[str, ...]] = {
     "public_opinion_response": ("争议", "投诉", "质疑", "回应", "澄清", "危机", "辟谣", "负面"),
@@ -58,8 +88,33 @@ class RuleBasedEventParser:
     def __init__(self, default_product_name: str = "abc_reading") -> None:
         self.default_product_name = default_product_name
 
-    def parse(self, payload: str | dict[str, Any]) -> ParsedEvent:
+    def parse(
+        self,
+        payload: str | dict[str, Any],
+        *,
+        workspace_root: str | Path | None = None,
+        use_llm: bool = False,
+        llm_client: Any | None = None,
+    ) -> ParsedEvent:
         raw_event = self._normalize_payload(payload)
+        parsed_event = self._parse_rule_based(raw_event)
+        if not use_llm:
+            return parsed_event
+
+        client = llm_client
+        if client is None and workspace_root is not None:
+            client = OpenAICompatibleLLMClient.from_env_files(workspace_root)
+        if client is None:
+            return parsed_event
+
+        enriched_event = self._apply_llm_parse(
+            raw_event=raw_event,
+            parsed_event=parsed_event,
+            llm_client=client,
+        )
+        return enriched_event or parsed_event
+
+    def _parse_rule_based(self, raw_event: dict[str, Any]) -> ParsedEvent:
         merged_text = " ".join(
             [
                 raw_event["event_title"],
@@ -73,7 +128,7 @@ class RuleBasedEventParser:
         event_type, event_reasons = self._infer_event_type(normalized_text)
         target_goal, goal_reasons = self._infer_target_goal(normalized_text, raw_event["target_goal"])
         target_audience, audience_reasons = self._infer_target_audience(normalized_text, raw_event["target_audience"])
-        extracted_keywords = self._extract_keywords(normalized_text, raw_event["target_audience"])
+        extracted_keywords = self._extract_keywords(raw_event, normalized_text, raw_event["target_audience"])
         constraints = self._normalize_constraints(raw_event.get("constraints", {}), normalized_text)
 
         reasoning = _dedupe_preserve_order(
@@ -89,7 +144,23 @@ class RuleBasedEventParser:
             target_audience=target_audience,
             extracted_keywords=extracted_keywords,
             constraints=constraints,
+            semantic_tags=_dedupe_preserve_order(target_audience + extracted_keywords[:6]),
+            narrative_frames=self._default_narrative_frames(event_type, target_goal),
+            sensitive_entities=[],
+            target_roles=self._default_target_roles(target_goal, constraints.risk_level),
+            negative_constraints=self._default_negative_constraints(
+                risk_level=constraints.risk_level,
+                event_type=event_type,
+            ),
+            dispatch_preferences=self._default_dispatch_preferences(
+                max_selected_nodes=constraints.max_selected_nodes,
+                risk_level=constraints.risk_level,
+            ),
             reasoning=reasoning,
+            llm_metadata={
+                "requested": False,
+                "used": False,
+            },
         )
 
     def _normalize_payload(self, payload: str | dict[str, Any]) -> dict[str, Any]:
@@ -187,13 +258,49 @@ class RuleBasedEventParser:
             return "medium"
         return "low"
 
-    def _extract_keywords(self, normalized_text: str, explicit_audience: list[str]) -> list[str]:
+    def _extract_keywords(
+        self,
+        raw_event: dict[str, Any],
+        normalized_text: str,
+        explicit_audience: list[str],
+    ) -> list[str]:
         keywords: list[str] = []
         for rule_set in (EVENT_TYPE_RULES, GOAL_RULES, AUDIENCE_RULES):
             for candidate_keywords in rule_set.values():
                 keywords.extend(self._matched_keywords(normalized_text, candidate_keywords))
+        keywords.extend(
+            self._extract_generic_keywords(
+                raw_event.get("event_title", ""),
+                raw_event.get("event_description", ""),
+                raw_event.get("target_goal", ""),
+            )
+        )
         keywords.extend(explicit_audience)
+        return _dedupe_preserve_order(keywords)[:12]
+
+    def _extract_generic_keywords(self, *texts: str) -> list[str]:
+        keywords: list[str] = []
+        for text in texts:
+            for match in _GENERIC_TERM_RE.finditer(str(text or "")):
+                token = match.group(0).strip()
+                normalized = _normalize_text(token)
+                if not self._valid_generic_keyword(token=token, normalized=normalized):
+                    continue
+                keywords.append(token)
         return _dedupe_preserve_order(keywords)
+
+    def _valid_generic_keyword(self, *, token: str, normalized: str) -> bool:
+        if not token or not normalized:
+            return False
+        if normalized in GENERIC_STOPWORDS:
+            return False
+        if normalized.isdigit():
+            return False
+        if len(token) <= 1:
+            return False
+        if len(token) > 16 and any(char.isascii() for char in token):
+            return False
+        return True
 
     def _matched_keywords(self, normalized_text: str, keywords: tuple[str, ...]) -> list[str]:
         return [keyword for keyword in keywords if self._fuzzy_contains(normalized_text, keyword)]
@@ -216,3 +323,146 @@ class RuleBasedEventParser:
 
     def _make_event_id(self) -> str:
         return f"event_{uuid4().hex[:10]}"
+
+    def _default_narrative_frames(self, event_type: str, target_goal: str) -> list[str]:
+        frames: list[str] = []
+        if target_goal == "response":
+            frames.extend(["事实澄清", "问答回应"])
+        elif target_goal == "engagement":
+            frames.extend(["议题讨论", "经验分享"])
+        else:
+            frames.extend(["信息触达", "摘要扩散"])
+
+        if event_type == "public_opinion_response":
+            frames.append("风险收敛")
+        elif event_type == "activity_announcement":
+            frames.append("活动提醒")
+        return _dedupe_preserve_order(frames)
+
+    def _default_target_roles(self, target_goal: str, risk_level: str) -> list[str]:
+        roles = ["core_publish_node", "interaction_response_node", "amplification_node"]
+        if risk_level == "high":
+            roles = ["core_publish_node", "interaction_response_node", "support_node"]
+        elif target_goal == "response":
+            roles = ["core_publish_node", "interaction_response_node", "support_node"]
+        elif target_goal == "engagement":
+            roles = ["core_publish_node", "interaction_response_node", "amplification_node"]
+        return roles
+
+    def _default_negative_constraints(self, *, risk_level: str, event_type: str) -> list[str]:
+        constraints = ["避免节点内容完全同质化"]
+        if risk_level in {"medium", "high"}:
+            constraints.append("避免情绪化和对立化表达")
+        if risk_level == "high" or event_type == "public_opinion_response":
+            constraints.append("避免未经证实的推测性扩写")
+        return constraints
+
+    def _default_dispatch_preferences(
+        self,
+        *,
+        max_selected_nodes: int,
+        risk_level: str,
+    ) -> EventDispatchPreferences:
+        candidate_pool_size = max(12, min(60, max_selected_nodes * 6))
+        rerank_top_k = max(6, min(candidate_pool_size, max_selected_nodes * 3))
+        semantic_weight = 0.42 if risk_level == "high" else 0.35
+        diversity_weight = 0.16 if risk_level == "high" else 0.22
+        risk_weight = 0.26 if risk_level == "high" else 0.18
+        return EventDispatchPreferences(
+            candidate_pool_size=candidate_pool_size,
+            rerank_top_k=rerank_top_k,
+            semantic_weight=semantic_weight,
+            diversity_weight=diversity_weight,
+            risk_weight=risk_weight,
+        )
+
+    def _apply_llm_parse(
+        self,
+        *,
+        raw_event: dict[str, Any],
+        parsed_event: ParsedEvent,
+        llm_client: Any,
+    ) -> ParsedEvent | None:
+        fallback_parse = {
+            "event_type": parsed_event.event_type,
+            "target_goal": parsed_event.target_goal,
+            "target_audience": parsed_event.target_audience,
+            "extracted_keywords": parsed_event.extracted_keywords,
+            "risk_level": parsed_event.constraints.risk_level,
+            "semantic_tags": parsed_event.semantic_tags,
+            "narrative_frames": parsed_event.narrative_frames,
+            "target_roles": parsed_event.target_roles,
+            "negative_constraints": parsed_event.negative_constraints,
+            "dispatch_preferences": parsed_event.dispatch_preferences.model_dump(mode="json"),
+            "reasoning": parsed_event.reasoning,
+        }
+        try:
+            response = llm_client.generate_json(
+                system_prompt=build_event_parser_system_prompt(),
+                user_prompt=build_event_parser_user_prompt(
+                    raw_event=raw_event,
+                    fallback_parse=fallback_parse,
+                ),
+            )
+        except (LLMClientError, OSError, ValueError, TypeError):
+            return None
+
+        try:
+            event_type = str(response.get("event_type") or parsed_event.event_type).strip() or parsed_event.event_type
+            target_goal = str(response.get("target_goal") or parsed_event.target_goal).strip() or parsed_event.target_goal
+            target_audience = self._normalize_str_list(response.get("target_audience")) or parsed_event.target_audience
+            extracted_keywords = self._normalize_str_list(response.get("extracted_keywords")) or parsed_event.extracted_keywords
+            risk_level = str(response.get("risk_level") or parsed_event.constraints.risk_level).strip().lower()
+            if risk_level not in {"low", "medium", "high"}:
+                risk_level = parsed_event.constraints.risk_level
+            semantic_tags = self._normalize_str_list(response.get("semantic_tags")) or parsed_event.semantic_tags
+            narrative_frames = self._normalize_str_list(response.get("narrative_frames")) or parsed_event.narrative_frames
+            sensitive_entities = self._normalize_str_list(response.get("sensitive_entities"))
+            target_roles = self._normalize_roles(response.get("target_roles")) or parsed_event.target_roles
+            negative_constraints = self._normalize_str_list(response.get("negative_constraints")) or parsed_event.negative_constraints
+
+            raw_preferences = response.get("dispatch_preferences")
+            if isinstance(raw_preferences, dict):
+                merged_preferences = {
+                    **parsed_event.dispatch_preferences.model_dump(mode="json"),
+                    **raw_preferences,
+                }
+                dispatch_preferences = EventDispatchPreferences.model_validate(merged_preferences)
+            else:
+                dispatch_preferences = parsed_event.dispatch_preferences
+
+            llm_reasoning = self._normalize_str_list(response.get("reasoning"))
+            return parsed_event.model_copy(
+                update={
+                    "target_goal": target_goal,
+                    "event_type": event_type,
+                    "target_audience": _dedupe_preserve_order(target_audience),
+                    "extracted_keywords": _dedupe_preserve_order(extracted_keywords),
+                    "constraints": parsed_event.constraints.model_copy(update={"risk_level": risk_level}),
+                    "semantic_tags": _dedupe_preserve_order(semantic_tags),
+                    "narrative_frames": _dedupe_preserve_order(narrative_frames),
+                    "sensitive_entities": _dedupe_preserve_order(sensitive_entities),
+                    "target_roles": _dedupe_preserve_order(target_roles),
+                    "negative_constraints": _dedupe_preserve_order(negative_constraints),
+                    "dispatch_preferences": dispatch_preferences,
+                    "parser_name": "rule_llm_v1",
+                    "reasoning": _dedupe_preserve_order(parsed_event.reasoning + llm_reasoning + ["llm_event_parse_used"]),
+                    "llm_metadata": {
+                        "requested": True,
+                        "used": True,
+                        "provider": getattr(llm_client, "provider", None),
+                        "model": getattr(llm_client, "model", None),
+                    },
+                }
+            )
+        except Exception:
+            return None
+
+    def _normalize_str_list(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return _dedupe_preserve_order([str(item).strip() for item in value if str(item).strip()])
+
+    def _normalize_roles(self, value: Any) -> list[str]:
+        allowed = {"core_publish_node", "interaction_response_node", "amplification_node", "support_node"}
+        return [item for item in self._normalize_str_list(value) if item in allowed]

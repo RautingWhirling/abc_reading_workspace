@@ -186,3 +186,64 @@ class DataLoader:
             enriched_profiles=enriched_profiles,
             summary=summary,
         )
+
+    @staticmethod
+    def summarize_profile_for_semantics(
+        profile: UserProfile,
+        *,
+        enriched_profile: EnrichedUserProfile | None = None,
+        is_interaction_source: bool = False,
+    ) -> str:
+        graph_attributes = enriched_profile.graph_attributes if enriched_profile is not None else GraphAttributes()
+        interests = ", ".join(item for item in profile.user_interests if item)
+        description = profile.user_description.strip() or "no_description"
+        tags = [
+            f"user_name={profile.user_name}",
+            f"followers={profile.user_followers}",
+            f"friends={profile.user_friends}",
+            f"interests={interests or 'none'}",
+            f"description={description}",
+            f"neighbor_count={graph_attributes.neighbor_count}",
+            f"mutual_neighbor_count={graph_attributes.mutual_neighbor_count}",
+            f"received_interaction_count={graph_attributes.received_interaction_count}",
+            f"made_interaction_count={graph_attributes.made_interaction_count}",
+            f"self_interaction_count={graph_attributes.self_interaction_count}",
+            f"is_interaction_source={str(bool(is_interaction_source)).lower()}",
+        ]
+        return " | ".join(tags)
+
+    def build_candidate_materials(
+        self,
+        *,
+        user_ids: list[str],
+        profiles: dict[str, UserProfile] | None = None,
+        enriched_profiles: dict[str, EnrichedUserProfile] | None = None,
+        source_user_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        profiles = profiles or self.load_profiles()
+        if enriched_profiles is None and self.enriched_profile_path.exists():
+            try:
+                enriched_profiles = self.load_enriched_profiles()
+            except ValueError:
+                enriched_profiles = {}
+        enriched_profiles = enriched_profiles or {}
+        source_user_ids = source_user_ids or set()
+
+        materials: list[dict[str, Any]] = []
+        for user_id in user_ids:
+            profile = profiles.get(user_id)
+            if profile is None:
+                continue
+            enriched_profile = enriched_profiles.get(user_id)
+            materials.append(
+                {
+                    "user_id": user_id,
+                    "user_name": profile.user_name,
+                    "semantic_profile": self.summarize_profile_for_semantics(
+                        profile,
+                        enriched_profile=enriched_profile,
+                        is_interaction_source=user_id in source_user_ids,
+                    ),
+                }
+            )
+        return materials
