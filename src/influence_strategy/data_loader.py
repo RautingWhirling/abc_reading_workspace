@@ -36,8 +36,26 @@ class DataLoader:
         return self.raw_dir / f"{self.product_name}_interaction.graph.anon"
 
     @property
+    def compact_profile_path(self) -> Path:
+        return self.derived_dir / f"{self.product_name}_profile_compact.graph.anon"
+
+    @property
     def enriched_profile_path(self) -> Path:
         return self.derived_dir / f"{self.product_name}_profile_with_neighbors.graph.anon"
+
+    def _preferred_profile_path(self) -> Path:
+        if self.compact_profile_path.exists():
+            return self.compact_profile_path
+        if self.profile_path.exists():
+            return self.profile_path
+        if self.enriched_profile_path.exists():
+            return self.enriched_profile_path
+        return self.profile_path
+
+    def _preferred_enriched_profile_path(self) -> Path:
+        if self.compact_profile_path.exists():
+            return self.compact_profile_path
+        return self.enriched_profile_path
 
     def _read_json(self, path: Path) -> Any:
         with path.open("r", encoding="utf-8-sig") as handle:
@@ -58,12 +76,10 @@ class DataLoader:
         return ProductContext.model_validate(payload)
 
     def load_profiles(self, limit: int | None = None) -> dict[str, UserProfile]:
-        if self.profile_path.exists():
-            payload = self._read_json(self.profile_path)
-        elif self.enriched_profile_path.exists():
-            payload = self._read_json(self.enriched_profile_path)
-        else:
-            self._ensure_file(self.profile_path)
+        selected_path = self._preferred_profile_path()
+        if not selected_path.exists():
+            self._ensure_file(selected_path)
+        payload = self._read_json(selected_path)
         if not isinstance(payload, dict):
             raise ValueError("Profile file must contain a JSON object.")
 
@@ -117,8 +133,9 @@ class DataLoader:
                 yield record
 
     def load_enriched_profiles(self, limit: int | None = None) -> dict[str, EnrichedUserProfile]:
-        self._ensure_file(self.enriched_profile_path)
-        payload = self._read_json(self.enriched_profile_path)
+        selected_path = self._preferred_enriched_profile_path()
+        self._ensure_file(selected_path)
+        payload = self._read_json(selected_path)
         if not isinstance(payload, dict):
             raise ValueError("Enriched profile file must contain a JSON object.")
 
@@ -138,13 +155,12 @@ class DataLoader:
 
     def build_summary(self) -> DatasetSummary:
         product_context = self.load_product_context()
-        profiles_raw = self._read_json(
-            self.profile_path if self.profile_path.exists() else self.enriched_profile_path
-        )
+        profiles_raw = self._read_json(self._preferred_profile_path())
         interactions_raw = self._read_json(self.interaction_path) if self.interaction_path.exists() else {}
         enriched_count: int | None = None
-        if self.enriched_profile_path.exists():
-            enriched_raw = self._read_json(self.enriched_profile_path)
+        preferred_enriched_path = self._preferred_enriched_profile_path()
+        if preferred_enriched_path.exists():
+            enriched_raw = self._read_json(preferred_enriched_path)
             enriched_count = len(enriched_raw)
 
         return DatasetSummary(
@@ -169,7 +185,7 @@ class DataLoader:
             limit_records_per_source=interaction_record_limit,
         )
         enriched_profiles = None
-        if include_enriched_profiles and self.enriched_profile_path.exists():
+        if include_enriched_profiles and self._preferred_enriched_profile_path().exists():
             enriched_profiles = self.load_enriched_profiles(limit=profile_limit)
 
         summary = DatasetSummary(
@@ -221,7 +237,7 @@ class DataLoader:
         source_user_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         profiles = profiles or self.load_profiles()
-        if enriched_profiles is None and self.enriched_profile_path.exists():
+        if enriched_profiles is None and self._preferred_enriched_profile_path().exists():
             try:
                 enriched_profiles = self.load_enriched_profiles()
             except ValueError:

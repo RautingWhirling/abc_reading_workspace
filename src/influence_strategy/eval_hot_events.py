@@ -222,7 +222,15 @@ def build_eval_output(
 
     payload: dict[str, Any] = {
         "事件名称": str(hot_event.get("event_title") or strategy_result.event.event_title),
+        "输出格式版本": "action_schema_v2",
         "选取数字人id组": selected_ids,
+        "策略概览": {
+            "主平台": platform,
+            "传播目标": target,
+            "目标圈层": strategy_result.strategy.target_object,
+            "传播窗口": strategy_result.strategy.time_plan,
+            "主选节点数": len(selected_nodes),
+        },
     }
 
     for node in selected_nodes:
@@ -235,26 +243,458 @@ def build_eval_output(
             selected_ids=selected_ids,
         )
         override_content = llm_overrides.get(node.user_id, {})
+        audience_profile = override_content.get("audience_profile") or fallback_content["audience_profile"]
+        interaction_focus = (
+            override_content.get("audience_interaction_strategy")
+            or fallback_content["audience_interaction_strategy"]
+        )
+        coordination_focus = (
+            override_content.get("cross_digital_human_strategy")
+            or fallback_content["cross_digital_human_strategy"]
+        )
+        topic_labels = _topic_labels(node, strategy_result)
+        role_bucket_ids = _role_bucket_ids(strategy_result.selected_nodes, node.user_id)
 
         payload[node.user_id] = {
-            "时间阶段": _stage_text(node),
-            "发帖频率": _frequency_text(node.frequency_per_day),
-            "发帖平台": platform,
-            "发帖内容": override_content.get("post_content") or fallback_content["post_content"],
-            "目标受众": {
-                "目标群体画像": override_content.get("audience_profile")
-                or fallback_content["audience_profile"],
-                "目标群体交互策略": override_content.get("audience_interaction_strategy")
-                or fallback_content["audience_interaction_strategy"],
+            "节点角色": {
+                "角色类型": node.selected_role,
+                "执行阶段": node.dispatch_stage,
+                "时间阶段": _stage_text(node),
+                "执行优先级": node.dispatch_priority,
+                "节点得分": round(node.final_score, 6),
             },
-            "与其他数字人互动策略": {
-                "互动数字人id集合": fallback_content["cross_digital_human_ids"],
-                "互动策略": override_content.get("cross_digital_human_strategy")
-                or fallback_content["cross_digital_human_strategy"],
+            "执行目标": {
+                "传播目标": target,
+                "目标群体标签": strategy_result.strategy.target_object,
+                "目标群体画像": audience_profile,
+                "主题关键词": topic_labels,
+            },
+            "内容发布动作": _build_content_publish_actions(
+                node=node,
+                platform=platform,
+                post_content=override_content.get("post_content") or fallback_content["post_content"],
+                topic_labels=topic_labels,
+                role_bucket_ids=role_bucket_ids,
+            ),
+            "受众互动动作": _build_audience_action_plan(
+                node=node,
+                topic_labels=topic_labels,
+                interaction_focus=interaction_focus,
+                role_bucket_ids=role_bucket_ids,
+            ),
+            "数字人协同动作": _build_coordination_action_plan(
+                node=node,
+                coordination_focus=coordination_focus,
+                role_bucket_ids=role_bucket_ids,
+            ),
+            "风险控制动作": _build_risk_action_plan(node=node),
+            "补充说明": {
+                "节点入选原因": node.rationale[:6],
+                "互动关注点": interaction_focus,
+                "协同关注点": coordination_focus,
             },
         }
 
     return payload
+
+
+def _topic_labels(node: StrategyNodePlan, strategy_result: StrategyResult) -> list[str]:
+    labels: list[str] = []
+    for item in [
+        *node.matched_keywords,
+        *node.semantic_tags,
+        *strategy_result.event.extracted_keywords[:3],
+    ]:
+        text = str(item).strip()
+        if text and text not in labels:
+            labels.append(text)
+    return labels[:6]
+
+
+def _role_bucket_ids(
+    selected_nodes: list[StrategyNodePlan],
+    current_user_id: str,
+) -> dict[str, list[str]]:
+    role_map = {
+        "core_publish_node": [],
+        "interaction_response_node": [],
+        "amplification_node": [],
+        "support_node": [],
+    }
+    for node in selected_nodes:
+        if node.user_id == current_user_id:
+            continue
+        role_map.setdefault(node.selected_role, []).append(node.user_id)
+    return role_map
+
+
+def _make_action(
+    *,
+    action_type: str,
+    action_name: str,
+    execute_window: str,
+    trigger_condition: str,
+    target_object: str,
+    parameters: dict[str, Any],
+    target_result: str,
+) -> dict[str, Any]:
+    return {
+        "动作类型": action_type,
+        "动作名称": action_name,
+        "执行窗口": execute_window,
+        "触发条件": trigger_condition,
+        "目标对象": target_object,
+        "执行参数": parameters,
+        "目标结果": target_result,
+    }
+
+
+def _build_content_publish_actions(
+    *,
+    node: StrategyNodePlan,
+    platform: str,
+    post_content: str,
+    topic_labels: list[str],
+    role_bucket_ids: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    role_action_map = {
+        "core_publish_node": ("publish_post", "发布主帖"),
+        "interaction_response_node": ("publish_followup_post", "发布跟进帖"),
+        "amplification_node": ("quote_repost", "转发并附评"),
+        "support_node": ("publish_support_post", "发布补充帖"),
+    }
+    action_type, action_name = role_action_map.get(
+        node.selected_role,
+        ("publish_post", "发布帖子"),
+    )
+
+    reference_ids = role_bucket_ids.get("core_publish_node", [])
+    trigger_condition = "进入对应时间阶段后立即执行"
+    target_object = "公共信息流"
+    if node.selected_role in {"interaction_response_node", "amplification_node", "support_node"} and reference_ids:
+        trigger_condition = f"核心节点 {reference_ids[0]} 完成首发后 10-30 分钟内执行"
+        target_object = f"围绕数字人 {reference_ids[0]} 的核心信息展开"
+
+    return [
+        _make_action(
+            action_type=action_type,
+            action_name=action_name,
+            execute_window=_stage_text(node),
+            trigger_condition=trigger_condition,
+            target_object=target_object,
+            parameters={
+                "执行平台": platform,
+                "执行频次": _frequency_text(node.frequency_per_day),
+                "内容风格": node.suggested_content_style,
+                "建议话题标签": topic_labels,
+                "正文草案": post_content,
+                "关联数字人id": reference_ids[:2],
+            },
+            target_result="完成节点自身的阶段性内容发布任务，并为后续互动或扩散提供锚点。",
+        )
+    ]
+
+
+def _build_audience_action_plan(
+    *,
+    node: StrategyNodePlan,
+    topic_labels: list[str],
+    interaction_focus: str,
+    role_bucket_ids: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = [
+        _make_action(
+            action_type="monitor_comments",
+            action_name="监测评论",
+            execute_window=_stage_text(node),
+            trigger_condition="帖子发出后持续监测评论区反馈",
+            target_object="评论区与转评区",
+            parameters={
+                "优先关键词": topic_labels[:4],
+                "关注类型": ["高频疑问", "事实补充", "明显误读"],
+            },
+            target_result="识别需要优先回应的问题与高价值讨论线索。",
+        )
+    ]
+
+    if node.selected_role == "core_publish_node":
+        actions.extend(
+            [
+                _make_action(
+                    action_type="like_comment",
+                    action_name="点赞评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="出现理性提问或有效补充信息的评论时执行",
+                    target_object="用户评论",
+                    parameters={
+                        "数量上限": 5,
+                        "优先评论类型": ["理性提问", "事实补充"],
+                    },
+                    target_result="提高优质评论的可见度，稳定讨论方向。",
+                ),
+                _make_action(
+                    action_type="reply_comment",
+                    action_name="回复评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="前 3 个高频问题出现后执行",
+                    target_object="高频问题评论",
+                    parameters={
+                        "数量上限": 3,
+                        "回复风格": "解释型",
+                        "回复要点": topic_labels[:3],
+                    },
+                    target_result="快速建立统一口径，避免首轮误读扩散。",
+                ),
+            ]
+        )
+    elif node.selected_role == "interaction_response_node":
+        target_core = (role_bucket_ids.get("core_publish_node") or ["-"])[0]
+        actions.extend(
+            [
+                _make_action(
+                    action_type="comment_on_post",
+                    action_name="评论主帖",
+                    execute_window=_stage_text(node),
+                    trigger_condition="核心主帖发布后立即跟进",
+                    target_object=f"数字人 {target_core} 的主帖",
+                    parameters={
+                        "评论数量": 1,
+                        "评论目的": "补充常见问题入口或追问锚点",
+                        "互动关注点": interaction_focus,
+                    },
+                    target_result="把评论区讨论引导到可承接的问题上。",
+                ),
+                _make_action(
+                    action_type="reply_comment",
+                    action_name="回复评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="评论区出现高频疑问、误读或追问时执行",
+                    target_object="主帖评论区",
+                    parameters={
+                        "数量上限": 5,
+                        "回复风格": "答疑型",
+                        "引用核心节点": target_core,
+                    },
+                    target_result="集中消化高频问题，降低核心节点的回复压力。",
+                ),
+            ]
+        )
+    elif node.selected_role == "amplification_node":
+        actions.extend(
+            [
+                _make_action(
+                    action_type="like_post",
+                    action_name="点赞帖子",
+                    execute_window=_stage_text(node),
+                    trigger_condition="核心节点完成首发后执行",
+                    target_object=f"数字人 {(role_bucket_ids.get('core_publish_node') or ['-'])[0]} 的主帖",
+                    parameters={
+                        "执行次数": 1,
+                    },
+                    target_result="建立扩散节点与核心信息之间的可见连接。",
+                ),
+                _make_action(
+                    action_type="reply_comment",
+                    action_name="回复评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="二次扩散帖下出现转化为事实问题的评论时执行",
+                    target_object="扩散帖评论区",
+                    parameters={
+                        "数量上限": 3,
+                        "回复风格": "摘要型",
+                        "回复要点": topic_labels[:2],
+                    },
+                    target_result="让扩散环节保持一致口径，不偏离核心叙事。",
+                ),
+            ]
+        )
+    else:
+        actions.extend(
+            [
+                _make_action(
+                    action_type="like_comment",
+                    action_name="点赞评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="出现有代表性的长尾问题或补充观点时执行",
+                    target_object="长尾评论",
+                    parameters={
+                        "数量上限": 4,
+                        "优先评论类型": ["背景追问", "案例补充"],
+                    },
+                    target_result="扶持更深入的讨论线索，避免讨论过快收缩。",
+                ),
+                _make_action(
+                    action_type="reply_comment",
+                    action_name="回复评论",
+                    execute_window=_stage_text(node),
+                    trigger_condition="需要补充背景信息时执行",
+                    target_object="长尾问题评论",
+                    parameters={
+                        "数量上限": 2,
+                        "回复风格": "补充说明型",
+                        "互动关注点": interaction_focus,
+                    },
+                    target_result="补全背景信息，提升讨论完整度。",
+                ),
+            ]
+        )
+
+    return actions
+
+
+def _build_coordination_action_plan(
+    *,
+    node: StrategyNodePlan,
+    coordination_focus: str,
+    role_bucket_ids: dict[str, list[str]],
+) -> list[dict[str, Any]]:
+    core_ids = role_bucket_ids.get("core_publish_node", [])
+    interaction_ids = role_bucket_ids.get("interaction_response_node", [])
+    amplification_ids = role_bucket_ids.get("amplification_node", [])
+    support_ids = role_bucket_ids.get("support_node", [])
+
+    if node.selected_role == "core_publish_node":
+        return [
+            _make_action(
+                action_type="reply_agent_comment",
+                action_name="回复数字人评论",
+                execute_window=_stage_text(node),
+                trigger_condition="互动节点在主帖下完成第一轮评论后执行",
+                target_object=f"数字人 {','.join(interaction_ids[:2]) or '-'} 的评论",
+                parameters={
+                    "动作目的": "确认关键信息并锁定统一口径",
+                    "涉及数字人id": interaction_ids[:2],
+                },
+                target_result="形成核心节点与互动节点之间的可见协同。",
+            ),
+            _make_action(
+                action_type="like_post",
+                action_name="点赞数字人帖子",
+                execute_window=_stage_text(node),
+                trigger_condition="扩散或支持节点发布有效补充内容后执行",
+                target_object=f"数字人 {','.join((amplification_ids + support_ids)[:2]) or '-'} 的帖子",
+                parameters={
+                    "数量上限": 2,
+                    "协同关注点": coordination_focus,
+                },
+                target_result="放大协同节点的有效补充内容。",
+            ),
+        ]
+
+    if node.selected_role == "interaction_response_node":
+        return [
+            _make_action(
+                action_type="comment_on_post",
+                action_name="评论数字人帖子",
+                execute_window=_stage_text(node),
+                trigger_condition="核心主帖发布后 5-15 分钟内执行",
+                target_object=f"数字人 {','.join(core_ids[:1]) or '-'} 的主帖",
+                parameters={
+                    "评论数量": 1,
+                    "评论目的": "承接问答和补充追问入口",
+                    "涉及数字人id": core_ids[:1],
+                },
+                target_result="把互动节点挂接到核心帖下的主要讨论流。",
+            ),
+            _make_action(
+                action_type="like_post",
+                action_name="点赞数字人帖子",
+                execute_window=_stage_text(node),
+                trigger_condition="支持节点发布补充信息后执行",
+                target_object=f"数字人 {','.join(support_ids[:2]) or '-'} 的补充帖",
+                parameters={
+                    "数量上限": 2,
+                    "协同关注点": coordination_focus,
+                },
+                target_result="提高补充帖的可见度并形成协同反馈。",
+            ),
+        ]
+
+    if node.selected_role == "amplification_node":
+        return [
+            _make_action(
+                action_type="like_post",
+                action_name="点赞数字人帖子",
+                execute_window=_stage_text(node),
+                trigger_condition="核心节点完成首发后执行",
+                target_object=f"数字人 {','.join(core_ids[:1]) or '-'} 的主帖",
+                parameters={
+                    "执行次数": 1,
+                    "涉及数字人id": core_ids[:1],
+                },
+                target_result="建立扩散节点与核心节点的显式关联。",
+            ),
+            _make_action(
+                action_type="comment_on_post",
+                action_name="评论数字人帖子",
+                execute_window=_stage_text(node),
+                trigger_condition="支持节点或互动节点发布补充信息后执行",
+                target_object=f"数字人 {','.join((interaction_ids + support_ids)[:2]) or '-'} 的帖子",
+                parameters={
+                    "评论数量": 1,
+                    "评论目的": "提炼亮点并导流回核心信息",
+                    "协同关注点": coordination_focus,
+                },
+                target_result="让扩散内容和补充内容形成互相导流。",
+            ),
+        ]
+
+    return [
+        _make_action(
+            action_type="comment_on_post",
+            action_name="评论数字人帖子",
+            execute_window=_stage_text(node),
+            trigger_condition="核心帖或扩散帖出现需要补充背景的节点时执行",
+            target_object=f"数字人 {','.join((core_ids + amplification_ids)[:2]) or '-'} 的帖子",
+            parameters={
+                "评论数量": 1,
+                "评论目的": "补充背景、案例或上下文",
+                "协同关注点": coordination_focus,
+            },
+            target_result="让支持节点承担背景补完角色，而不是重复主信息。",
+        ),
+        _make_action(
+            action_type="like_comment",
+            action_name="点赞数字人评论",
+            execute_window=_stage_text(node),
+            trigger_condition="互动节点完成高质量答疑后执行",
+            target_object=f"数字人 {','.join(interaction_ids[:2]) or '-'} 的评论",
+            parameters={
+                "数量上限": 2,
+                "涉及数字人id": interaction_ids[:2],
+            },
+            target_result="提高高质量答疑评论的曝光，稳定讨论节奏。",
+        ),
+    ]
+
+
+def _build_risk_action_plan(node: StrategyNodePlan) -> list[dict[str, Any]]:
+    return [
+        _make_action(
+            action_type="monitor_sentiment",
+            action_name="监测舆情反馈",
+            execute_window=_stage_text(node),
+            trigger_condition="节点动作执行后持续观察反馈",
+            target_object="评论区、转评区、协同节点反馈",
+            parameters={
+                "重点风险": node.risk_flags or ["内容同质化", "误读扩散"],
+                "人工复核": node.manual_review_required,
+            },
+            target_result="尽快发现误读、负向升级或异常扩散。",
+        ),
+        _make_action(
+            action_type="pause_dispatch_if_needed",
+            action_name="必要时暂停动作",
+            execute_window=_stage_text(node),
+            trigger_condition="出现明显误读升级、敏感争议或与主口径冲突时执行",
+            target_object="当前节点后续发布与互动动作",
+            parameters={
+                "暂停条件": ["负向评论快速上升", "敏感话题偏离", "与核心口径冲突"],
+                "后续处理": "切换为人工复核或仅保留事实回应",
+            },
+            target_result="避免错误扩散和协同失真。",
+        ),
+    ]
 
 
 def _run_hot_event_evaluation(

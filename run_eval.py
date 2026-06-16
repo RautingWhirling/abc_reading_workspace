@@ -124,15 +124,15 @@ def main() -> int:
         "outputs": [
             {
                 "event_id": output_path.name.replace("_strategy_output.json", ""),
-                "event_name": payload["事件名称"],
-                "selected_digital_human_ids": payload["选取数字人id组"],
+                "event_name": payload.get("事件名称", ""),
+                "selected_digital_human_ids": payload.get("选取数字人id组", []),
                 "json_output_path": str(output_path),
                 "trace_output_dir": str(args.trace_dir.resolve() / output_path.name.replace("_strategy_output.json", "")),
             }
             for output_path, payload in results
         ],
     }
-    print(json.dumps(console_summary, ensure_ascii=False, indent=2))
+    print(json.dumps(console_summary, ensure_ascii=True, indent=2))
     return 0
 
 
