@@ -40,10 +40,22 @@ class DataLoader:
         return self.derived_dir / f"{self.product_name}_profile_compact.graph.anon"
 
     @property
+    def reworked_profile_path(self) -> Path:
+        return self.derived_dir / "weibo_profile_reworked.graph.anon"
+
+    @property
+    def reworked_enriched_profile_path(self) -> Path:
+        return self.derived_dir / "weibo_profile_reworked_with_neighbors.graph.anon"
+
+    @property
     def enriched_profile_path(self) -> Path:
         return self.derived_dir / f"{self.product_name}_profile_with_neighbors.graph.anon"
 
     def _preferred_profile_path(self) -> Path:
+        if self.reworked_enriched_profile_path.exists():
+            return self.reworked_enriched_profile_path
+        if self.reworked_profile_path.exists():
+            return self.reworked_profile_path
         if self.compact_profile_path.exists():
             return self.compact_profile_path
         if self.profile_path.exists():
@@ -53,6 +65,10 @@ class DataLoader:
         return self.profile_path
 
     def _preferred_enriched_profile_path(self) -> Path:
+        if self.reworked_enriched_profile_path.exists():
+            return self.reworked_enriched_profile_path
+        if self.reworked_profile_path.exists():
+            return self.reworked_profile_path
         if self.compact_profile_path.exists():
             return self.compact_profile_path
         return self.enriched_profile_path

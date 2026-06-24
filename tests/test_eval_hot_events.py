@@ -163,15 +163,21 @@ class EvalHotEventsTest(unittest.TestCase):
             self.assertEqual(payload["事件名称"], "AI chip supply focus")
             self.assertIn("选取数字人id组", payload)
             self.assertTrue(payload["选取数字人id组"])
+            self.assertEqual(payload["输出格式版本"], "action_schema_v3_compact")
 
             first_id = payload["选取数字人id组"][0]
-            first_human = payload[first_id]
+            first_human = payload[f"id{first_id}"]
             self.assertIn("时间阶段", first_human)
             self.assertIn("发帖频率", first_human)
             self.assertRegex(first_human["发帖频率"], r"^\d+/day$")
             self.assertIn("发帖内容", first_human)
             self.assertIn("目标受众", first_human)
-            self.assertIn("与其他数字人互动策略", first_human)
+            self.assertIn("动作清单", first_human)
+            self.assertTrue(first_human["动作清单"])
+            first_action = first_human["动作清单"][0]
+            self.assertIn("动作编号", first_action)
+            self.assertIn("目标定位", first_action)
+            self.assertIn("生成对象", first_action)
 
             event_trace_dir = trace_dir / "hot_event_eval_001"
             self.assertTrue((event_trace_dir / "00_hot_event_input.json").exists())
@@ -215,21 +221,17 @@ class EvalHotEventsTest(unittest.TestCase):
 
             self.assertTrue(output_path.exists())
             first_id = payload["选取数字人id组"][0]
-            first_human = payload[first_id]
+            first_human = payload[f"id{first_id}"]
             self.assertTrue(first_human["发帖内容"].startswith("LLM generated post content"))
             self.assertTrue(
                 first_human["目标受众"]["目标群体画像"].startswith("LLM generated audience profile")
             )
-            self.assertTrue(
-                first_human["目标受众"]["目标群体交互策略"].startswith(
-                    "LLM generated interaction strategy"
-                )
+            action_payload_text = json.dumps(
+                [action["执行参数"] for action in first_human["动作清单"]],
+                ensure_ascii=False,
             )
-            self.assertTrue(
-                first_human["与其他数字人互动策略"]["互动策略"].startswith(
-                    "LLM generated collaboration strategy"
-                )
-            )
+            self.assertIn("LLM generated interaction strategy", action_payload_text)
+            self.assertIn("LLM generated collaboration strategy", action_payload_text)
 
     def test_run_hot_event_evaluations_writes_first_n_events_only(self) -> None:
         with TemporaryDirectory() as tmpdir:

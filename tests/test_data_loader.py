@@ -132,6 +132,91 @@ class DataLoaderTest(unittest.TestCase):
             self.assertEqual(len(bundle.interactions["1"]), 1)
             self.assertIsNone(bundle.enriched_profiles)
 
+    def test_reworked_weibo_profile_has_loader_priority(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            raw_dir = root / "data" / "raw"
+            derived_dir = root / "data" / "derived"
+            raw_dir.mkdir(parents=True)
+            derived_dir.mkdir(parents=True)
+
+            (raw_dir / "abc_reading_product_info.json").write_text(
+                json.dumps({"product_name": "abc_reading"}),
+                encoding="utf-8",
+            )
+            (raw_dir / "abc_reading_profile.graph.anon").write_text(
+                json.dumps(
+                    {
+                        "1": {
+                            "user_id": 1,
+                            "user_name": "raw_user",
+                            "user_followers": 10,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (derived_dir / "abc_reading_profile_compact.graph.anon").write_text(
+                json.dumps(
+                    {
+                        "1": {
+                            "user_id": 1,
+                            "user_name": "compact_user",
+                            "user_followers": 20,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (derived_dir / "weibo_profile_reworked.graph.anon").write_text(
+                json.dumps(
+                    {
+                        "1": {
+                            "user_id": 1,
+                            "user_name": "reworked_user",
+                            "user_followers": 300,
+                            "graph_attributes": {"neighbor_count": 6, "isolated": False},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (derived_dir / "weibo_profile_reworked_with_neighbors.graph.anon").write_text(
+                json.dumps(
+                    {
+                        "1": {
+                            "user_id": 1,
+                            "user_name": "reworked_neighbor_user",
+                            "user_followers": 600,
+                            "graph_attributes": {"neighbor_count": 1, "isolated": False},
+                            "neighbors": [
+                                {
+                                    "neighbor_id": "2",
+                                    "relation": "engaged_by",
+                                    "received_comment_count": 1,
+                                    "received_repost_count": 0,
+                                    "made_comment_count": 0,
+                                    "made_repost_count": 0,
+                                    "received_interaction_count": 1,
+                                    "made_interaction_count": 0,
+                                    "total_interaction_count": 1,
+                                }
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            loader = DataLoader(root)
+            profiles = loader.load_profiles()
+            enriched_profiles = loader.load_enriched_profiles()
+
+            self.assertEqual(profiles["1"].user_name, "reworked_neighbor_user")
+            self.assertEqual(profiles["1"].user_followers, 600)
+            self.assertEqual(enriched_profiles["1"].graph_attributes.neighbor_count, 1)
+            self.assertEqual(enriched_profiles["1"].neighbors[0].neighbor_id, "2")
+
 
 if __name__ == "__main__":
     unittest.main()
