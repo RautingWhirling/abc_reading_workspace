@@ -26,6 +26,38 @@ _SPACE_RE = re.compile(r"\s+")
 _NON_TEXT_RE = re.compile(r"[^\w\u4e00-\u9fff]+", re.UNICODE)
 
 
+EVENT_KEYWORD_EXPANSIONS = (
+    (
+        ("\u822a\u8fd0", "\u7ea2\u6d77", "\u62a4\u822a", "\u6d77\u8fd0", "\u5168\u7403\u7269\u6d41", "\u4f9b\u5e94\u94fe"),
+        (
+            "\u822a\u8fd0",
+            "\u6d77\u8fd0",
+            "\u7269\u6d41",
+            "\u4f9b\u5e94\u94fe",
+            "\u56fd\u9645\u8d38\u6613",
+            "\u5168\u7403\u5e02\u573a",
+            "\u6e2f\u53e3",
+            "\u80fd\u6e90",
+            "\u56fd\u9645\u5173\u7cfb",
+            "\u5730\u7f18\u653f\u6cbb",
+            "\u8d38\u6613\u6210\u672c",
+        ),
+    ),
+    (
+        ("\u6cb9\u4ef7", "\u80fd\u6e90", "\u539f\u6cb9", "\u5730\u7f18\u98ce\u9669"),
+        ("\u80fd\u6e90\u4ef7\u683c", "\u80fd\u6e90", "\u56fd\u9645\u8d38\u6613", "\u4f9b\u5e94\u94fe", "\u5168\u7403\u5e02\u573a", "\u5730\u7f18\u653f\u6cbb"),
+    ),
+    (
+        ("\u6781\u7aef\u5929\u6c14", "\u57ce\u5e02\u5e94\u6025", "\u7535\u529b\u4fdd\u969c", "\u516c\u5171\u5b89\u5168"),
+        ("\u57ce\u5e02\u6cbb\u7406", "\u516c\u5171\u5b89\u5168", "\u6c11\u751f", "\u516c\u5171\u670d\u52a1", "\u57fa\u5c42\u670d\u52a1", "\u5e94\u6025", "\u7535\u529b"),
+    ),
+    (
+        ("\u6570\u636e\u6cc4\u9732", "\u7f51\u7edc\u5b89\u5168", "\u5408\u89c4", "\u9690\u79c1"),
+        ("\u7f51\u7edc\u5b89\u5168", "\u9690\u79c1\u4fdd\u62a4", "\u5408\u89c4\u98ce\u9669", "\u6cd5\u5f8b\u6cd5\u89c4", "\u4e8b\u5b9e\u6838\u67e5", "\u516c\u5171\u89c4\u5219"),
+    ),
+)
+
+
 def _normalize_text(text: str) -> str:
     lowered = (text or "").lower()
     cleaned = _NON_TEXT_RE.sub(" ", lowered)
@@ -323,12 +355,26 @@ class FeatureBuilder:
             for item in event.semantic_tags
             if item not in generic_tags
         ]
-        return [
+        keywords = [
             event.event_title,
             *event.extracted_keywords,
             *semantic_keywords,
             *audience_keywords,
         ]
+        event_text = _normalize_text(
+            " ".join(
+                [
+                    event.event_title,
+                    event.event_description,
+                    *event.extracted_keywords,
+                    *semantic_keywords,
+                ]
+            )
+        ).replace(" ", "")
+        for triggers, expansions in EVENT_KEYWORD_EXPANSIONS:
+            if any(trigger in event_text for trigger in triggers):
+                keywords.extend(expansions)
+        return keywords
 
     def _match_keywords(self, profile: UserProfile, normalized_keywords: list[str]) -> list[str]:
         if not normalized_keywords:
@@ -363,6 +409,10 @@ class FeatureBuilder:
                 return False
         else:
             if len(normalized_keyword) < 2 or len(normalized_token) < 2:
+                return False
+            shorter = min(len(normalized_keyword), len(normalized_token))
+            longer = max(len(normalized_keyword), len(normalized_token))
+            if longer >= 4 and (shorter < 3 or shorter / longer < 0.50):
                 return False
         return fuzz.partial_ratio(keyword, token) >= 90
 

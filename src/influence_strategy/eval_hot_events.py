@@ -298,36 +298,153 @@ def build_eval_output(
             },
         }
 
-    payload: dict[str, Any] = {
+    five_dimension_strategy = _build_five_dimension_strategy(
+        strategy_result=strategy_result,
+        selected_nodes=selected_nodes,
+        selected_ids=selected_ids,
+        platform=platform,
+        target=target,
+        post_refs=post_refs,
+        node_outputs=node_outputs,
+    )
+
+    return {
         "事件名称": str(hot_event.get("event_title") or strategy_result.event.event_title),
-        "输出格式版本": "action_schema_v3_compact",
-        "选取数字人id组": selected_ids,
-        "策略概览": {
-            "主平台": platform,
-            "协同平台": secondary_platforms,
-            "传播目标": target,
-            "目标圈层": strategy_result.strategy.target_object,
-            "传播窗口": strategy_result.strategy.time_plan,
-            "主选节点数": len(selected_nodes),
-            "计划内帖子数": len(post_refs),
-            "计划动作数": len(selected_nodes) * 4,
-        },
-        "平台协同策略": _build_platform_coordination(
-            primary_platform=platform,
-            secondary_platforms=secondary_platforms,
-        ),
-        "帖子引用表": {
-            post_ref: {
-                "发帖数字人id": user_id,
-                "发布动作编号": publish_action_ids[user_id],
-                "平台": platform,
+        "输出格式版本": "action_schema_v5_five_dimensions_minimal",
+        "五维调度策略": five_dimension_strategy,
+    }
+
+
+def _build_five_dimension_strategy(
+    *,
+    strategy_result: StrategyResult,
+    selected_nodes: list[StrategyNodePlan],
+    selected_ids: list[str],
+    platform: str,
+    target: str,
+    post_refs: dict[str, str],
+    node_outputs: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    target_objects = strategy_result.strategy.target_object or ["泛公众"]
+    frequency_plan = strategy_result.strategy.frequency_plan
+
+    target_plan: list[dict[str, Any]] = []
+    time_plan: list[dict[str, Any]] = []
+    frequency_items: list[dict[str, Any]] = []
+    platform_items: list[dict[str, Any]] = []
+    content_items: list[dict[str, Any]] = []
+    actions: list[dict[str, Any]] = []
+
+    for node in selected_nodes:
+        node_key = f"id{node.user_id}"
+        node_output = node_outputs.get(node_key, {})
+        post_ref = post_refs.get(node.user_id, "")
+        node_actions = node_output.get("动作清单", [])
+        selected_actions = _minimal_actions_for_node(node_actions, max_actions=2)
+
+        target_plan.append(
+            {
+                "数字人id": node.user_id,
+                "节点角色": node.selected_role,
+                "目标受众": target_objects,
             }
-            for user_id, post_ref in post_refs.items()
+        )
+        time_plan.append(
+            {
+                "数字人id": node.user_id,
+                "时间阶段": node_output.get("时间阶段", _stage_text(node)),
+            }
+        )
+        frequency_items.append(
+            {
+                "数字人id": node.user_id,
+                "发帖频率": node_output.get("发帖频率", _frequency_text(node.frequency_per_day)),
+                "频率上限": _frequency_text(frequency_plan.global_cap_per_day),
+            }
+        )
+        platform_items.append(
+            {
+                "数字人id": node.user_id,
+                "分发平台": platform,
+            }
+        )
+        content_items.append(
+            {
+                "数字人id": node.user_id,
+                "post_ref": post_ref,
+                "发帖内容": node_output.get("发帖内容", ""),
+            }
+        )
+        actions.extend(selected_actions)
+
+    return {
+        "目标对象": {
+            "传播目标": target,
+            "选取数字人id组": selected_ids,
+            "数字人分工": target_plan,
+        },
+        "时间": {
+            "传播窗口": strategy_result.strategy.time_plan,
+            "数字人时间安排": time_plan,
+        },
+        "频率": {
+            "数字人频率": frequency_items,
+        },
+        "平台": {
+            "平台模式": "weibo_only",
+            "数字人平台分发": platform_items,
+        },
+        "内容": {
+            "数字人发帖内容": content_items,
+            "动作清单": actions,
         },
     }
-    payload.update(node_outputs)
-    return payload
 
+
+def _minimal_actions_for_node(
+    actions: list[dict[str, Any]],
+    *,
+    max_actions: int,
+) -> list[dict[str, Any]]:
+    preferred_groups = ("content_publish", "audience_interaction", "digital_human_coordination")
+    selected: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
+
+    for group in preferred_groups:
+        for action in actions:
+            action_id = str(action.get("动作编号", ""))
+            if action_id in used_ids or action.get("动作分组") != group:
+                continue
+            selected.append(_minimal_action(action))
+            used_ids.add(action_id)
+            break
+        if len(selected) >= max_actions:
+            return selected
+
+    for action in actions:
+        action_id = str(action.get("动作编号", ""))
+        if action_id in used_ids:
+            continue
+        selected.append(_minimal_action(action))
+        used_ids.add(action_id)
+        if len(selected) >= max_actions:
+            break
+    return selected
+
+
+def _minimal_action(action: dict[str, Any]) -> dict[str, Any]:
+    target = action.get("目标定位", {})
+    result = {
+        "动作编号": action.get("动作编号", ""),
+        "执行主体": action.get("执行主体", ""),
+        "动作类型": action.get("动作类型", ""),
+        "执行平台": action.get("执行平台", ""),
+        "目标帖子": target.get("post_ref", ""),
+    }
+    depends_on = action.get("依赖动作", [])
+    if depends_on:
+        result["依赖动作"] = depends_on
+    return result
 
 def _topic_labels(node: StrategyNodePlan, strategy_result: StrategyResult) -> list[str]:
     labels: list[str] = []

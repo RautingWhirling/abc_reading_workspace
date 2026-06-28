@@ -161,23 +161,32 @@ class EvalHotEventsTest(unittest.TestCase):
 
             self.assertTrue(output_path.exists())
             self.assertEqual(payload["事件名称"], "AI chip supply focus")
-            self.assertIn("选取数字人id组", payload)
-            self.assertTrue(payload["选取数字人id组"])
-            self.assertEqual(payload["输出格式版本"], "action_schema_v3_compact")
+            self.assertEqual(payload["输出格式版本"], "action_schema_v5_five_dimensions_minimal")
+            self.assertEqual(set(payload.keys()), {"事件名称", "输出格式版本", "五维调度策略"})
 
-            first_id = payload["选取数字人id组"][0]
-            first_human = payload[f"id{first_id}"]
-            self.assertIn("时间阶段", first_human)
-            self.assertIn("发帖频率", first_human)
-            self.assertRegex(first_human["发帖频率"], r"^\d+/day$")
-            self.assertIn("发帖内容", first_human)
-            self.assertIn("目标受众", first_human)
-            self.assertIn("动作清单", first_human)
-            self.assertTrue(first_human["动作清单"])
-            first_action = first_human["动作清单"][0]
+            five_dimension_strategy = payload["五维调度策略"]
+            for dimension in ("目标对象", "时间", "频率", "平台", "内容"):
+                self.assertIn(dimension, five_dimension_strategy)
+
+            selected_ids = five_dimension_strategy["目标对象"]["选取数字人id组"]
+            self.assertTrue(selected_ids)
+            self.assertEqual(five_dimension_strategy["平台"]["平台模式"], "weibo_only")
+            self.assertEqual(
+                len(five_dimension_strategy["平台"]["数字人平台分发"]),
+                len(selected_ids),
+            )
+            self.assertEqual(
+                len(five_dimension_strategy["内容"]["数字人发帖内容"]),
+                len(selected_ids),
+            )
+            self.assertTrue(five_dimension_strategy["内容"]["动作清单"])
+            first_action = five_dimension_strategy["内容"]["动作清单"][0]
             self.assertIn("动作编号", first_action)
-            self.assertIn("目标定位", first_action)
-            self.assertIn("生成对象", first_action)
+            self.assertIn("执行主体", first_action)
+            self.assertIn("动作类型", first_action)
+            self.assertIn("目标帖子", first_action)
+            self.assertNotIn("目标定位", first_action)
+            self.assertNotIn("执行参数", first_action)
 
             event_trace_dir = trace_dir / "hot_event_eval_001"
             self.assertTrue((event_trace_dir / "00_hot_event_input.json").exists())
@@ -220,18 +229,13 @@ class EvalHotEventsTest(unittest.TestCase):
             )
 
             self.assertTrue(output_path.exists())
-            first_id = payload["选取数字人id组"][0]
-            first_human = payload[f"id{first_id}"]
-            self.assertTrue(first_human["发帖内容"].startswith("LLM generated post content"))
-            self.assertTrue(
-                first_human["目标受众"]["目标群体画像"].startswith("LLM generated audience profile")
-            )
-            action_payload_text = json.dumps(
-                [action["执行参数"] for action in first_human["动作清单"]],
-                ensure_ascii=False,
-            )
-            self.assertIn("LLM generated interaction strategy", action_payload_text)
-            self.assertIn("LLM generated collaboration strategy", action_payload_text)
+            content_items = payload["五维调度策略"]["内容"]["数字人发帖内容"]
+            self.assertTrue(content_items[0]["发帖内容"].startswith("LLM generated post content"))
+            action_types = {
+                action["动作类型"]
+                for action in payload["五维调度策略"]["内容"]["动作清单"]
+            }
+            self.assertTrue(action_types & {"reply_comment", "comment_post", "quote_repost", "like_post"})
 
     def test_run_hot_event_evaluations_writes_first_n_events_only(self) -> None:
         with TemporaryDirectory() as tmpdir:

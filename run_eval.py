@@ -13,6 +13,15 @@ if str(SRC_DIR) not in sys.path:
 from influence_strategy.eval_hot_events import run_hot_event_evaluations
 
 
+def _selected_ids_from_payload(payload: dict) -> list[str]:
+    strategy = payload.get("五维调度策略", {})
+    target_object = strategy.get("目标对象", {}) if isinstance(strategy, dict) else {}
+    selected_ids = target_object.get("选取数字人id组", [])
+    if selected_ids:
+        return selected_ids
+    return payload.get("选取数字人id组", [])
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="读取 hot_event 测试集并生成结构化 JSON 分发策略。",
@@ -125,7 +134,7 @@ def main() -> int:
             {
                 "event_id": output_path.name.replace("_strategy_output.json", ""),
                 "event_name": payload.get("事件名称", ""),
-                "selected_digital_human_ids": payload.get("选取数字人id组", []),
+                "selected_digital_human_ids": _selected_ids_from_payload(payload),
                 "json_output_path": str(output_path),
                 "trace_output_dir": str(args.trace_dir.resolve() / output_path.name.replace("_strategy_output.json", "")),
             }

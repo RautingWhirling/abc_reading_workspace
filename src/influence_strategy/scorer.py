@@ -137,7 +137,10 @@ class Scorer:
 
         if feature.llm_feature_used and feature.event_semantic_relevance_score < 0.30:
             risk_flags.append("event_semantic_mismatch")
-            risk_components.append(0.16)
+            mismatch_component = 0.24 if feature.topic_match_score < 0.25 else 0.16
+            if feature.influence_score >= 0.60:
+                mismatch_component += 0.08
+            risk_components.append(mismatch_component)
 
         if feature.risk_conflict_score >= 0.25:
             risk_flags.append("llm_risk_conflict")
@@ -228,9 +231,12 @@ class Scorer:
         if not feature.llm_feature_used:
             return base_match
         if risk_level == "high":
+            if feature.event_semantic_relevance_score < 0.30 and feature.llm_feature_score < 0.50:
+                return False
             return (
                 feature.event_semantic_relevance_score >= 0.45
-                or feature.topic_match_score >= 0.20
+                or feature.llm_feature_score >= 0.55
+                or feature.topic_match_score >= 0.30
             )
         if risk_level == "medium":
             return (
@@ -246,12 +252,13 @@ class Scorer:
 
     def _has_semantic_support(self, *, risk_level: str, feature: NodeFeature) -> bool:
         if risk_level == "high":
-            return (
-                feature.event_semantic_relevance_score >= 0.35
-                or feature.llm_feature_score >= 0.30
-                or feature.keyword_hit_count >= 2
-                or feature.topic_match_score >= 0.12
-            )
+            if feature.llm_feature_used:
+                return (
+                    feature.event_semantic_relevance_score >= 0.35
+                    or feature.llm_feature_score >= 0.50
+                    or feature.topic_match_score >= 0.30
+                )
+            return feature.keyword_hit_count >= 2 or feature.topic_match_score >= 0.18
         if risk_level == "medium":
             return (
                 feature.event_semantic_relevance_score >= 0.25

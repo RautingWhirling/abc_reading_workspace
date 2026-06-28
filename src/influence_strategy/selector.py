@@ -95,6 +95,8 @@ class Selector:
             )
             used_ids.add(candidate.user_id)
 
+        selected_nodes = self._rebalance_selected_roles(selected_nodes)
+
         fallback_nodes: list[SelectedNode] = []
         fallback_candidates = [node for node in [*safe_pool, *review_pool, *fallback_pool] if node.user_id not in used_ids]
         for index, candidate in enumerate(fallback_candidates[:10], start=1):
@@ -186,6 +188,58 @@ class Selector:
             "general_support": "support_node",
         }
         return mapping.get(role_hint, "support_node")
+
+    def _rebalance_selected_roles(self, selected_nodes: list[SelectedNode]) -> list[SelectedNode]:
+        if len(selected_nodes) <= 1:
+            return selected_nodes
+        existing_roles = [node.selected_role for node in selected_nodes]
+        required_unique_roles = min(3, len(selected_nodes))
+        needs_rebalance = (
+            "core_publish_node" not in existing_roles
+            or len(set(existing_roles)) < required_unique_roles
+        )
+        if not needs_rebalance:
+            return selected_nodes
+
+        desired_roles = [
+            "core_publish_node",
+            "interaction_response_node",
+            "amplification_node",
+            "support_node",
+            "interaction_response_node",
+        ]
+        rebalanced: list[SelectedNode] = []
+        for index, node in enumerate(selected_nodes):
+            selected_role = desired_roles[min(index, len(desired_roles) - 1)]
+            role_hint = self._role_hint_for_selected_role(selected_role)
+            reasons = [
+                reason
+                for reason in node.selection_reasons
+                if not reason.startswith("selected_role=") and not reason.startswith("dispatch_stage=")
+            ]
+            if selected_role != node.selected_role:
+                reasons.append(f"role_rebalanced={node.selected_role}->{selected_role}")
+            reasons.append(f"selected_role={selected_role}")
+            reasons.append(f"dispatch_stage={self._dispatch_stage(role_hint)}")
+            rebalanced.append(
+                node.model_copy(
+                    update={
+                        "selected_role": selected_role,
+                        "dispatch_stage": self._dispatch_stage(role_hint),
+                        "selection_reasons": reasons,
+                    }
+                )
+            )
+        return rebalanced
+
+    def _role_hint_for_selected_role(self, selected_role: str) -> str:
+        mapping = {
+            "core_publish_node": "core_broadcast",
+            "interaction_response_node": "interaction_response",
+            "amplification_node": "amplification",
+            "support_node": "general_support",
+        }
+        return mapping.get(selected_role, "general_support")
 
     def _dispatch_stage(self, role_hint: str) -> str:
         mapping = {

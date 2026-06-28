@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from influence_strategy.data_loader import DataLoader
 from influence_strategy.event_parser import RuleBasedEventParser
 from influence_strategy.feature_builder import FeatureBuilder
+from influence_strategy.models import SelectedNode
 from influence_strategy.scorer import Scorer
 from influence_strategy.selector import Selector
 
@@ -304,6 +305,50 @@ class SelectorTest(unittest.TestCase):
             self.assertTrue(
                 any(reason.startswith("llm_selector=") for reason in selection_result.selected_nodes[0].selection_reasons)
             )
+
+    def test_selector_rebalances_homogeneous_selected_roles(self) -> None:
+        homogeneous_nodes = [
+            SelectedNode(
+                user_id=str(index),
+                user_name=f"user_{index}",
+                event_id="event_test",
+                event_type="public_affairs",
+                role_hint="amplification",
+                final_score=0.8,
+                eligible=True,
+                priority_tier="high",
+                selection_rank=index,
+                selected_role="amplification_node",
+                dispatch_stage="stage_3_amplify",
+                selection_bucket="primary",
+                selection_reasons=[
+                    "selected_role=amplification_node",
+                    "dispatch_stage=stage_3_amplify",
+                    "selection_bucket=primary",
+                ],
+            )
+            for index in range(1, 5)
+        ]
+
+        rebalanced_nodes = Selector()._rebalance_selected_roles(homogeneous_nodes)
+
+        selected_roles = [node.selected_role for node in rebalanced_nodes]
+        self.assertEqual(
+            selected_roles,
+            [
+                "core_publish_node",
+                "interaction_response_node",
+                "amplification_node",
+                "support_node",
+            ],
+        )
+        self.assertTrue(
+            any(
+                reason.startswith("role_rebalanced=")
+                for node in rebalanced_nodes
+                for reason in node.selection_reasons
+            )
+        )
 
 
 if __name__ == "__main__":
