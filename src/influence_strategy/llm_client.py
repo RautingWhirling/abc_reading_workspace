@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
 import os
 import urllib.error
 import urllib.request
@@ -90,6 +92,69 @@ class OpenAICompatibleLLMClient:
             provider=resolved_provider,
         )
 
+    @classmethod
+    def from_vision_env_files(cls, workspace_root: str | Path) -> "OpenAICompatibleLLMClient | None":
+        env_values: dict[str, str] = {}
+        root = Path(workspace_root)
+        for path in (
+            root / ".env",
+            root / "src" / "influence_strategy" / ".env",
+        ):
+            env_values.update(_read_env_file(path))
+
+        api_key = _first_non_empty(
+            env_values.get("VISION_LLM_API_KEY"),
+            os.environ.get("VISION_LLM_API_KEY"),
+            env_values.get("LLM_API_KEY"),
+            os.environ.get("LLM_API_KEY"),
+            env_values.get("DASHSCOPE_API_KEY"),
+            os.environ.get("DASHSCOPE_API_KEY"),
+            env_values.get("OPENAI_API_KEY"),
+            os.environ.get("OPENAI_API_KEY"),
+        )
+        base_url = _first_non_empty(
+            env_values.get("VISION_LLM_BASE_URL"),
+            os.environ.get("VISION_LLM_BASE_URL"),
+            env_values.get("LLM_BASE_URL"),
+            os.environ.get("LLM_BASE_URL"),
+            env_values.get("DASHSCOPE_BASE_URL"),
+            os.environ.get("DASHSCOPE_BASE_URL"),
+            env_values.get("OPENAI_BASE_URL"),
+            os.environ.get("OPENAI_BASE_URL"),
+            env_values.get("OPENAI_API_BASE"),
+            os.environ.get("OPENAI_API_BASE"),
+            "https://api.openai.com/v1",
+        )
+        model = _first_non_empty(
+            env_values.get("VISION_LLM_MODEL"),
+            os.environ.get("VISION_LLM_MODEL"),
+            env_values.get("LLM_MODEL"),
+            os.environ.get("LLM_MODEL"),
+            env_values.get("MODEL_NAME"),
+            os.environ.get("MODEL_NAME"),
+            env_values.get("DASHSCOPE_MODEL"),
+            os.environ.get("DASHSCOPE_MODEL"),
+            env_values.get("OPENAI_MODEL"),
+            os.environ.get("OPENAI_MODEL"),
+            "gpt-4o-mini",
+        )
+        provider = _first_non_empty(
+            env_values.get("VISION_LLM_PROVIDER"),
+            os.environ.get("VISION_LLM_PROVIDER"),
+            env_values.get("LLM_PROVIDER"),
+            os.environ.get("LLM_PROVIDER"),
+        )
+
+        if not api_key:
+            return None
+
+        return cls(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            provider=provider or _infer_provider(base_url=base_url, model=model),
+        )
+
     def describe(self) -> dict[str, str]:
         return {
             "provider": self.provider,
@@ -117,6 +182,43 @@ class OpenAICompatibleLLMClient:
         except LLMClientError:
             payload.pop("response_format", None)
             return self._post_chat_completions(payload)
+
+    def generate_json_with_image(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        image_path: str | Path,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
+        image = Path(image_path)
+        resolved_mime_type = mime_type or mimetypes.guess_type(image.name)[0] or "application/octet-stream"
+        image_b64 = base64.b64encode(image.read_bytes()).decode("ascii")
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{resolved_mime_type};base64,{image_b64}",
+                            },
+                        },
+                    ],
+                },
+            ],
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            return _normalize_json_result(self._post_chat_completions(payload))
+        except LLMClientError:
+            payload.pop("response_format", None)
+            return _normalize_json_result(self._post_chat_completions(payload))
 
     def _post_chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         request = urllib.request.Request(
@@ -174,6 +276,14 @@ def _parse_json_content(content: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise LLMClientError("LLM JSON response must be an object.")
     return parsed
+
+
+def _normalize_json_result(result: dict[str, Any]) -> dict[str, Any]:
+    try:
+        content = result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return result
+    return _parse_json_content(str(content))
 
 
 def _first_non_empty(*values: str | None) -> str:
