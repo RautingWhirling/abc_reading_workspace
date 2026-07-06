@@ -194,6 +194,49 @@ def run_hot_event_evaluations(
     return results
 
 
+def run_hot_event_dict_evaluations(
+    *,
+    workspace_root: str | Path,
+    events: list[dict[str, Any]],
+    output_dir: str | Path | None = None,
+    event_id: str | None = None,
+    event_limit: int | None = None,
+    profile_limit: int | None = None,
+    max_selected_nodes: int = 5,
+    risk_level: str | None = None,
+    campaign_window_hours: int = 24,
+    max_frequency_per_day: int = 3,
+    allowed_platforms: list[str] | None = None,
+    use_llm: bool = True,
+    llm_client: Any | None = None,
+    trace_dir: str | Path | None = None,
+) -> list[tuple[Path, dict[str, Any]]]:
+    selected_events = select_hot_events(
+        events,
+        event_id=event_id,
+        event_limit=event_limit,
+    )
+
+    results: list[tuple[Path, dict[str, Any]]] = []
+    for hot_event in selected_events:
+        output_path, output_payload = _run_hot_event_evaluation(
+            workspace_root=workspace_root,
+            output_dir=output_dir,
+            hot_event=hot_event,
+            profile_limit=profile_limit,
+            max_selected_nodes=max_selected_nodes,
+            risk_level=risk_level,
+            campaign_window_hours=campaign_window_hours,
+            max_frequency_per_day=max_frequency_per_day,
+            allowed_platforms=allowed_platforms,
+            use_llm=use_llm,
+            llm_client=llm_client,
+            trace_dir=trace_dir,
+        )
+        results.append((output_path, output_payload))
+    return results
+
+
 def build_eval_output(
     *,
     hot_event: dict[str, Any],
@@ -1761,6 +1804,20 @@ def _write_pipeline_trace(
     target_root = Path(trace_dir) if trace_dir is not None else workspace_root / "tests" / "pipeline_step_outputs"
     event_dir = target_root / artifacts.strategy_result.event.event_id
     event_dir.mkdir(parents=True, exist_ok=True)
+
+    if hot_event.get("source_type") == "image":
+        _write_json(
+            event_dir / "00_image_input.json",
+            {
+                "event_id": hot_event.get("event_id"),
+                "source_type": hot_event.get("source_type"),
+                "source_image": hot_event.get("source_image"),
+            },
+        )
+        _write_json(
+            event_dir / "00_image_recognition.json",
+            hot_event.get("image_recognition", {}),
+        )
 
     _write_json(
         event_dir / "00_hot_event_input.json",

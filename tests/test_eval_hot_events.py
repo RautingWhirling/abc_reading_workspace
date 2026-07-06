@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 from influence_strategy.eval_hot_events import (
     hot_event_to_pipeline_payload,
+    run_hot_event_dict_evaluations,
     run_hot_event_evaluation,
     run_hot_event_evaluations,
 )
@@ -286,6 +287,59 @@ class EvalHotEventsTest(unittest.TestCase):
             self.assertFalse(
                 (eval_dir / "output" / "hot_event_eval_003_strategy_output.json").exists()
             )
+
+    def test_run_hot_event_dict_evaluations_writes_image_trace_outputs(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_minimal_workspace(root)
+
+            eval_dir = root / "eval"
+            eval_dir.mkdir(parents=True)
+            trace_dir = root / "tests" / "pipeline_step_outputs"
+            image_path = eval_dir / "image" / "4.png"
+            image_path.parent.mkdir(parents=True)
+            image_path.write_bytes(b"image")
+
+            events = [
+                {
+                    "event_id": "hot_event_005",
+                    "domain": "technology",
+                    "event_title": "AI chip supply image event",
+                    "event_summary": "High-end chip supply is tightening.",
+                    "target": "Explain the impact of chip supply changes.",
+                    "source_type": "image",
+                    "source_image": str(image_path),
+                    "image_recognition": {
+                        "method": "vision_llm",
+                        "confidence": 0.91,
+                        "matched_event_id": "hot_event_005",
+                        "match_score": 0.87,
+                        "match_threshold": 0.72,
+                        "fallback_used": False,
+                        "warnings": [],
+                        "recognized_event": {"event_title": "AI chip supply image event"},
+                    },
+                    "opinion_variants": ["AI chip supply variant"],
+                }
+            ]
+
+            results = run_hot_event_dict_evaluations(
+                workspace_root=root,
+                events=events,
+                output_dir=eval_dir / "output",
+                use_llm=False,
+                trace_dir=trace_dir,
+            )
+
+            self.assertEqual(len(results), 1)
+            event_trace_dir = trace_dir / "hot_event_005"
+            image_input = json.loads((event_trace_dir / "00_image_input.json").read_text(encoding="utf-8"))
+            recognition = json.loads((event_trace_dir / "00_image_recognition.json").read_text(encoding="utf-8"))
+            self.assertEqual(image_input["source_image"], str(image_path))
+            self.assertEqual(recognition["matched_event_id"], "hot_event_005")
+            self.assertEqual(recognition["match_threshold"], 0.72)
+            self.assertTrue((event_trace_dir / "00_hot_event_input.json").exists())
+            self.assertTrue((event_trace_dir / "07_final_output.json").exists())
 
     def _write_minimal_workspace(self, root: Path) -> None:
         raw_dir = root / "data" / "raw"
