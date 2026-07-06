@@ -300,3 +300,10 @@ action_schema_v5_five_dimensions_minimal
 6. 视觉模型不可用时，错误信息清晰，且不影响其他图片继续处理。
 7. 新增单元测试和轻量端到端测试通过。
 
+## Implementation Artifacts
+
+- Design spec: `docx/image-eval-input-design.md`
+- Implementation plan: `docx/image-eval-input-plan.md`
+- Image loader module: `src/influence_strategy/image_event_loader.py`
+- CLI entry: `run_eval.py --image eval/image/4.png`
+- Batch CLI entry: `run_eval.py --image-dir eval/image --event-limit 4`
