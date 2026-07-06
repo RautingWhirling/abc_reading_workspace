@@ -10,7 +10,12 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from influence_strategy.eval_hot_events import run_hot_event_evaluations
+from influence_strategy.eval_hot_events import (
+    load_hot_events,
+    run_hot_event_dict_evaluations,
+    run_hot_event_evaluations,
+)
+from influence_strategy.image_event_loader import load_image_events
 
 
 def _selected_ids_from_payload(payload: dict) -> list[str]:
@@ -37,6 +42,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=PROJECT_ROOT / "eval" / "hot_event_opinion_variants.json",
         help="hot_event 输入文件，可以是单个对象或事件数组。",
+    )
+    parser.add_argument(
+        "--image",
+        type=Path,
+        help="Single image input; the image is recognized as a hot_event before evaluation.",
+    )
+    parser.add_argument(
+        "--image-dir",
+        type=Path,
+        help="Image directory input; reads .png/.jpg/.jpeg/.webp files by name order.",
     )
     parser.add_argument(
         "--event-id",
@@ -112,21 +127,48 @@ def main() -> int:
             if item.strip()
         ]
 
-    results = run_hot_event_evaluations(
-        workspace_root=args.workspace_root.resolve(),
-        input_path=args.input.resolve(),
-        output_dir=args.output_dir.resolve(),
-        event_id=args.event_id,
-        event_limit=args.event_limit,
-        profile_limit=args.profile_limit,
-        max_selected_nodes=args.max_selected_nodes,
-        risk_level=args.risk_level,
-        campaign_window_hours=args.campaign_window_hours,
-        max_frequency_per_day=args.max_frequency_per_day,
-        allowed_platforms=allowed_platforms,
-        use_llm=not args.disable_llm,
-        trace_dir=args.trace_dir.resolve(),
-    )
+    if args.image is not None or args.image_dir is not None:
+        reference_events = load_hot_events(args.input.resolve())
+        image_events = load_image_events(
+            image=args.image.resolve() if args.image is not None else None,
+            image_dir=args.image_dir.resolve() if args.image_dir is not None else None,
+            reference_events=reference_events,
+            workspace_root=args.workspace_root.resolve(),
+            event_limit=args.event_limit,
+            event_id=args.event_id,
+            use_llm=not args.disable_llm,
+        )
+        results = run_hot_event_dict_evaluations(
+            workspace_root=args.workspace_root.resolve(),
+            events=image_events,
+            output_dir=args.output_dir.resolve(),
+            event_id=None,
+            event_limit=None,
+            profile_limit=args.profile_limit,
+            max_selected_nodes=args.max_selected_nodes,
+            risk_level=args.risk_level,
+            campaign_window_hours=args.campaign_window_hours,
+            max_frequency_per_day=args.max_frequency_per_day,
+            allowed_platforms=allowed_platforms,
+            use_llm=not args.disable_llm,
+            trace_dir=args.trace_dir.resolve(),
+        )
+    else:
+        results = run_hot_event_evaluations(
+            workspace_root=args.workspace_root.resolve(),
+            input_path=args.input.resolve(),
+            output_dir=args.output_dir.resolve(),
+            event_id=args.event_id,
+            event_limit=args.event_limit,
+            profile_limit=args.profile_limit,
+            max_selected_nodes=args.max_selected_nodes,
+            risk_level=args.risk_level,
+            campaign_window_hours=args.campaign_window_hours,
+            max_frequency_per_day=args.max_frequency_per_day,
+            allowed_platforms=allowed_platforms,
+            use_llm=not args.disable_llm,
+            trace_dir=args.trace_dir.resolve(),
+        )
 
     console_summary = {
         "event_count": len(results),
