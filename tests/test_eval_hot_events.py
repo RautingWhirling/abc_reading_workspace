@@ -6,10 +6,22 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from influence_strategy.eval_hot_events import (
+    _build_llm_node_texts,
+    _post_content_text,
     hot_event_to_pipeline_payload,
     run_hot_event_dict_evaluations,
     run_hot_event_evaluation,
     run_hot_event_evaluations,
+)
+from influence_strategy.models import (
+    DispatchStrategy,
+    EventConstraints,
+    ParsedEvent,
+    ProductContext,
+    SelectionSummary,
+    StrategyNodePlan,
+    StrategyResult,
+    StrategySummary,
 )
 
 
@@ -198,6 +210,118 @@ class EvalHotEventsTest(unittest.TestCase):
             self.assertTrue((event_trace_dir / "06_strategy_generator_output.json").exists())
             self.assertTrue((event_trace_dir / "07_final_output.json").exists())
 
+    def _make_node(self, *, user_id: str, role: str) -> StrategyNodePlan:
+        return StrategyNodePlan(
+            user_id=user_id,
+            user_name=user_id,
+            selected_role=role,
+            dispatch_stage="stage_1_launch",
+        )
+
+    def test_post_content_fallback_is_natural_narrative(self) -> None:
+        node = self._make_node(user_id="1", role="core_publish_node")
+        variants = [
+            "红海航运紧张使海运成本承压。",
+            "多国加强护航说明关键通道安全影响供应链。",
+        ]
+        post = _post_content_text(
+            node=node,
+            node_index=1,
+            event_title="红海航运安全",
+            event_summary="红海及周边海域航运风险上升。",
+            variants=variants,
+        )
+        # 自然叙述：直接复用变体句，不出现内部策略标签
+        self.assertEqual(post, "红海航运紧张使海运成本承压。")
+        for label in ("传播目标", "内容风格", "执行动作", "参考叙述变体"):
+            self.assertNotIn(label, post)
+
+    def test_post_content_fallback_distinct_per_node_and_synthesizes_without_variants(self) -> None:
+        variants = ["第一条叙述变体。", "第二条叙述变体。", "第三条叙述变体。"]
+        node = self._make_node(user_id="1", role="core_publish_node")
+        posts = [
+            _post_content_text(
+                node=node,
+                node_index=index,
+                event_title="事件",
+                event_summary="事件摘要。",
+                variants=variants,
+            )
+            for index in range(1, len(variants) + 1)
+        ]
+        # 不同节点按顺序轮转拿到不同变体
+        self.assertEqual(len(set(posts)), len(variants))
+        self.assertEqual(posts[0], "第一条叙述变体。")
+
+        # 无变体时基于摘要合成，互动节点带自然问句
+        interaction_node = self._make_node(user_id="9", role="interaction_response_node")
+        synthesized = _post_content_text(
+            node=interaction_node,
+            node_index=1,
+            event_title="事件",
+            event_summary="红海及周边海域航运风险上升。",
+            variants=[],
+        )
+        self.assertIn("红海及周边海域航运风险上升。", synthesized)
+        self.assertNotIn("传播目标", synthesized)
+
+    def test_content_llm_meta_surfaced_in_trace_and_payload(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_minimal_workspace(root)
+
+            eval_dir = root / "eval"
+            eval_dir.mkdir(parents=True)
+            trace_dir = root / "tests" / "pipeline_step_outputs"
+            input_path = eval_dir / "hot_event_opinion_variants.json"
+            input_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "event_id": "hot_event_meta_001",
+                            "domain": "technology",
+                            "event_title": "AI chip supply focus",
+                            "event_summary": "High-end chip supply is tightening.",
+                            "target": "Explain the impact of chip supply changes.",
+                            "opinion_variants": [
+                                f"AI chip supply variant {index}"
+                                for index in range(1, 11)
+                            ],
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            output_path, payload = run_hot_event_evaluation(
+                workspace_root=root,
+                input_path=input_path,
+                output_dir=eval_dir / "output",
+                use_llm=False,
+                trace_dir=trace_dir,
+            )
+
+            content_dimension = payload["五维调度策略"]["内容"]
+            diagnostic = content_dimension["内容生成诊断"]
+            self.assertFalse(diagnostic["used"])
+            self.assertEqual(diagnostic["fallback_reason"], "llm_disabled")
+
+            # 离线兜底：帖子正文是自然叙述，不是标签模板
+            first_post = content_dimension["数字人发帖内容"][0]["发帖内容"]
+            self.assertIn("AI chip supply variant", first_post)
+            for label in ("传播目标", "内容风格", "执行动作", "参考叙述变体"):
+                self.assertNotIn(label, first_post)
+
+            event_trace_dir = trace_dir / "hot_event_meta_001"
+            meta_trace = json.loads(
+                (event_trace_dir / "08_content_generation_meta.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(meta_trace["post_content_source"], "rule_fallback")
+            self.assertEqual(
+                meta_trace["content_generation"]["fallback_reason"], "llm_disabled"
+            )
+
     def test_run_hot_event_evaluation_replaces_text_fields_with_llm_content(self) -> None:
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -237,6 +361,76 @@ class EvalHotEventsTest(unittest.TestCase):
                 for action in payload["五维调度策略"]["内容"]["动作清单"]
             }
             self.assertTrue(action_types & {"reply_comment", "comment_post", "quote_repost", "like_post"})
+
+    def test_llm_text_generation_includes_high_risk_image_nodes(self) -> None:
+        node = StrategyNodePlan(
+            user_id="risk-node-1",
+            user_name="risk_node",
+            selected_role="core_publish_node",
+            dispatch_stage="stage_1_launch",
+            final_score=0.12,
+            stability_score=0.05,
+            risk_level="high",
+            manual_review_required=True,
+            recommended_action="publish guarded explanation",
+            suggested_content_style="careful factual update",
+        )
+        parsed_event = ParsedEvent(
+            event_id="hot_event_image_risk",
+            event_title="Image risk event",
+            event_description="A high risk image event.",
+            target_goal="Use LLM text while keeping risk controls.",
+            event_type="general_influence_event",
+            constraints=EventConstraints(risk_level="high"),
+        )
+        strategy_result = StrategyResult(
+            event=parsed_event,
+            product_context=ProductContext(product_name="abc_reading"),
+            selection_summary=SelectionSummary(
+                event_id=parsed_event.event_id,
+                event_type=parsed_event.event_type,
+                max_selected_nodes=1,
+                selected_count=1,
+                fallback_count=0,
+            ),
+            summary=StrategySummary(
+                event_id=parsed_event.event_id,
+                event_type=parsed_event.event_type,
+                selected_count=1,
+                fallback_count=0,
+                primary_platform="weibo_simulated",
+            ),
+            stage_plans=[],
+            selected_nodes=[node],
+            fallback_nodes=[],
+            strategy=DispatchStrategy(
+                target_object=["general_public"],
+                objective="Use LLM text while keeping risk controls.",
+            ),
+        )
+
+        overrides, metadata = _build_llm_node_texts(
+            hot_event={
+                "event_id": parsed_event.event_id,
+                "source_type": "image",
+                "domain": "politics",
+                "event_title": parsed_event.event_title,
+                "event_summary": parsed_event.event_description,
+            },
+            strategy_result=strategy_result,
+            platform="weibo_simulated",
+            target=parsed_event.target_goal,
+            workspace_root=None,
+            use_llm=True,
+            llm_client=FakeLLMClient(),
+        )
+
+        self.assertTrue(metadata["used"])
+        self.assertIn(node.user_id, overrides)
+        self.assertEqual(
+            overrides[node.user_id]["post_content"],
+            "LLM generated post content risk-node-1",
+        )
 
     def test_run_hot_event_evaluations_writes_first_n_events_only(self) -> None:
         with TemporaryDirectory() as tmpdir:

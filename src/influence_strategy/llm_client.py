@@ -90,6 +90,7 @@ class OpenAICompatibleLLMClient:
             base_url=base_url,
             model=model,
             provider=resolved_provider,
+            timeout=_resolve_timeout(env_values, ("LLM_TIMEOUT",), default=90),
         )
 
     @classmethod
@@ -153,6 +154,7 @@ class OpenAICompatibleLLMClient:
             base_url=base_url,
             model=model,
             provider=provider or _infer_provider(base_url=base_url, model=model),
+            timeout=_resolve_timeout(env_values, ("VISION_LLM_TIMEOUT", "LLM_TIMEOUT"), default=90),
         )
 
     def describe(self) -> dict[str, str]:
@@ -294,6 +296,23 @@ def _first_non_empty(*values: str | None) -> str:
         if text:
             return text
     return ""
+
+
+def _resolve_timeout(env_values: dict[str, str], keys: tuple[str, ...], default: int) -> int:
+    """从 .env 或进程环境读取请求超时（秒）；非法或缺失时回退到默认值。"""
+    for key in keys:
+        raw = env_values.get(key)
+        if raw is None:
+            raw = os.environ.get(key)
+        if raw is None or not str(raw).strip():
+            continue
+        try:
+            value = int(str(raw).strip())
+        except ValueError:
+            continue
+        if value > 0:
+            return value
+    return default
 
 
 def _infer_provider(*, base_url: str, model: str) -> str:

@@ -244,7 +244,7 @@ def build_eval_output(
     workspace_root: str | Path | None = None,
     use_llm: bool = True,
     llm_client: Any | None = None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     selected_nodes = strategy_result.selected_nodes
     selected_ids = [node.user_id for node in selected_nodes]
     platform = strategy_result.strategy.platform_plan.primary_platform
@@ -254,7 +254,7 @@ def build_eval_output(
     ).strip()
     variants = _normalize_variants(hot_event.get("opinion_variants", []))
 
-    llm_overrides, _llm_meta = _build_llm_node_texts(
+    llm_overrides, content_llm_meta = _build_llm_node_texts(
         hot_event=hot_event,
         strategy_result=strategy_result,
         platform=platform,
@@ -279,6 +279,7 @@ def build_eval_output(
             hot_event=hot_event,
             strategy_result=strategy_result,
             node=node,
+            node_index=index,
             target=target,
             variants=variants,
             selected_ids=selected_ids,
@@ -351,11 +352,13 @@ def build_eval_output(
         node_outputs=node_outputs,
     )
 
-    return {
+    five_dimension_strategy["内容"]["内容生成诊断"] = _compact_content_llm_meta(content_llm_meta)
+    payload = {
         "事件名称": str(hot_event.get("event_title") or strategy_result.event.event_title),
         "输出格式版本": "action_schema_v5_five_dimensions_minimal",
         "五维调度策略": five_dimension_strategy,
     }
+    return payload, content_llm_meta
 
 
 def _build_five_dimension_strategy(
@@ -1362,7 +1365,7 @@ def _run_hot_event_evaluation(
         use_llm=use_llm,
         llm_client=client,
     )
-    output_payload = build_eval_output(
+    output_payload, content_llm_meta = build_eval_output(
         hot_event=hot_event,
         strategy_result=artifacts.strategy_result,
         workspace_root=root,
@@ -1386,6 +1389,7 @@ def _run_hot_event_evaluation(
         artifacts=artifacts,
         final_output=output_payload,
         output_path=output_path,
+        content_llm_meta=content_llm_meta,
     )
     return output_path, output_payload
 
@@ -1415,9 +1419,12 @@ def _build_llm_node_texts(
         metadata["fallback_reason"] = "llm_disabled"
         return {}, metadata
 
-    eligible_nodes = [
-        node for node in strategy_result.selected_nodes if _can_connect_llm(node)
-    ]
+    if hot_event.get("source_type") == "image":
+        eligible_nodes = list(strategy_result.selected_nodes)
+    else:
+        eligible_nodes = [
+            node for node in strategy_result.selected_nodes if _can_connect_llm(node)
+        ]
     if not eligible_nodes:
         metadata["fallback_reason"] = "no_eligible_nodes"
         return {}, metadata
@@ -1487,17 +1494,34 @@ def _build_llm_node_texts(
     return overrides, metadata
 
 
+def _compact_content_llm_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """精简的内容生成 LLM 诊断，内嵌到策略输出里，便于一眼看出帖子是 LLM 生成还是兜底。"""
+    return {
+        "used": bool(meta.get("used")),
+        "fallback_reason": meta.get("fallback_reason"),
+        "provider": meta.get("provider"),
+        "model": meta.get("model"),
+    }
+
+
 def _fallback_content_bundle(
     *,
     hot_event: dict[str, Any],
     strategy_result: StrategyResult,
     node: StrategyNodePlan,
+    node_index: int,
     target: str,
     variants: list[str],
     selected_ids: list[str],
 ) -> dict[str, Any]:
     return {
-        "post_content": _post_content_text(node=node, target=target, variants=variants),
+        "post_content": _post_content_text(
+            node=node,
+            node_index=node_index,
+            event_title=str(hot_event.get("event_title") or ""),
+            event_summary=str(hot_event.get("event_summary") or ""),
+            variants=variants,
+        ),
         "audience_profile": _audience_profile_text(
             hot_event=hot_event,
             strategy_result=strategy_result,
@@ -1543,14 +1567,6 @@ def _llm_prompt(
                 "other_digital_human_ids": [item for item in selected_ids if item != node.user_id],
                 "recommended_action": node.recommended_action,
                 "content_style_hint": node.suggested_content_style,
-                "metrics": {
-                    "final_score": node.final_score,
-                    "influence_score": node.influence_score,
-                    "diffusion_score": node.diffusion_score,
-                    "topic_match_score": node.topic_match_score,
-                    "stability_score": node.stability_score,
-                },
-                "selection_reasons": node.rationale,
             }
         )
 
@@ -1700,21 +1716,27 @@ def _frequency_text(frequency_per_day: int) -> str:
 def _post_content_text(
     *,
     node: StrategyNodePlan,
-    target: str,
+    node_index: int,
+    event_title: str,
+    event_summary: str,
     variants: list[str],
 ) -> str:
-    variant_hint = ""
-    if variants:
-        variant_index = max(node.selection_rank - 1, 0) % len(variants)
-        variant_hint = f"参考叙述变体：{variants[variant_index]}"
+    """生成可发布的自然叙述帖子正文（兜底路径，不依赖 LLM）。
 
-    parts = [
-        f"传播目标：{target}",
-        f"内容风格：{node.suggested_content_style}",
-        f"执行动作：{node.recommended_action}",
-        variant_hint,
-    ]
-    return " ".join(item for item in parts if item)
+    优先复用事件自带的 opinion_variants——它们本身就是完整中文句，按节点顺序轮转，
+    保证不同数字人拿到不同正文。无变体时基于事件摘要合成陈述。
+    不再拼接「传播目标/内容风格/执行动作」等内部标签：那些是策略元数据，
+    已经存在于动作清单的执行参数里，不应进入对外帖子。
+    """
+    if variants:
+        return variants[(node_index - 1) % len(variants)]
+
+    summary = (event_summary or event_title or "").strip()
+    if not summary:
+        summary = "事件信息更新中，请以官方通报为准。"
+    if node.selected_role == "interaction_response_node":
+        return f"{summary} 你怎么看这件事？"
+    return summary
 
 
 def _audience_profile_text(
@@ -1800,6 +1822,7 @@ def _write_pipeline_trace(
     artifacts: PipelineArtifacts,
     final_output: dict[str, Any],
     output_path: Path,
+    content_llm_meta: dict[str, Any] | None = None,
 ) -> None:
     target_root = Path(trace_dir) if trace_dir is not None else workspace_root / "tests" / "pipeline_step_outputs"
     event_dir = target_root / artifacts.strategy_result.event.event_id
@@ -1906,6 +1929,17 @@ def _write_pipeline_trace(
             "payload": final_output,
         },
     )
+    if content_llm_meta is not None:
+        _write_json(
+            event_dir / "08_content_generation_meta.json",
+            {
+                "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "content_generation": content_llm_meta,
+                "post_content_source": (
+                    "llm" if content_llm_meta.get("used") else "rule_fallback"
+                ),
+            },
+        )
 
 
 def _write_json(path: Path, payload: Any) -> None:

@@ -27,6 +27,16 @@ def _selected_ids_from_payload(payload: dict) -> list[str]:
     return payload.get("选取数字人id组", [])
 
 
+def _content_llm_status_from_payload(payload: dict) -> dict:
+    """读取内容生成诊断：帖子正文是 LLM 生成还是规则兜底，以及兜底原因。"""
+    strategy = payload.get("五维调度策略", {})
+    content = strategy.get("内容", {}) if isinstance(strategy, dict) else {}
+    diagnostic = content.get("内容生成诊断", {})
+    if isinstance(diagnostic, dict) and diagnostic:
+        return diagnostic
+    return {}
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="读取 hot_event 测试集并生成结构化 JSON 分发策略。",
@@ -177,6 +187,7 @@ def main() -> int:
                 "event_id": output_path.name.replace("_strategy_output.json", ""),
                 "event_name": payload.get("事件名称", ""),
                 "selected_digital_human_ids": _selected_ids_from_payload(payload),
+                "content_llm": _content_llm_status_from_payload(payload),
                 "json_output_path": str(output_path),
                 "trace_output_dir": str(args.trace_dir.resolve() / output_path.name.replace("_strategy_output.json", "")),
             }
