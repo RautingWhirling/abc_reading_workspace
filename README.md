@@ -114,6 +114,23 @@ C:\Users\82039\.conda\envs\learnAgent\python.exe scripts\build_weibo_reworked_ne
 - `data/derived/weibo_profile_reworked_graph_summary.json`
 - `data/derived/weibo_graph_rewrite_manifest.jsonl`
 
+### 200 条热点事件主题画像补强
+
+`eval/hot_event_opinion_variants_200.json` 将原来的 10 条热点事件扩展到 200 条。为了让候选数字人覆盖这些新增主题，可以在 `weibo_profile_reworked_with_neighbors.graph.anon` 中挑选低频、描述较少但仍有连接关系的节点，将其改造成按主题簇组织的候选数字人，并同步扩展连接关系：
+
+```powershell
+C:\Users\82039\.conda\envs\learnAgent\python.exe scripts\build_hot200_clustered_digital_humans.py
+```
+
+该脚本会直接更新 `data/derived/weibo_profile_reworked_with_neighbors.graph.anon`，但会先生成 `.bak` 备份。默认参数会选取约 30 个主题簇，替换 150 个原有低价值节点，并为它们补充同簇连接、语义相近原节点连接和跨簇桥接连接；所有受影响节点的 `graph_attributes` 和 `neighbors` 会从关系图重新计算。
+
+辅助输出包括：
+
+- `data/derived/weibo_profile_reworked_with_neighbors.graph.anon.bak`
+- `data/derived/weibo_profile_reworked_hot200_clustered_manifest.jsonl`
+- `data/derived/weibo_profile_reworked_hot200_clustered_summary.json`
+- `data/derived/hot200_topic_cluster_summary.json`
+
 项目中虽然仍沿用 `abc_reading` 这个数据来源，但任务目标已经明确从“商品推荐”切换为“影响力事件分发策略生成”。
 
 

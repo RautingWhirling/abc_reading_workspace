@@ -37,6 +37,13 @@ def _content_llm_status_from_payload(payload: dict) -> dict:
     return {}
 
 
+def default_eval_input_path() -> Path:
+    expanded_input = PROJECT_ROOT / "eval" / "hot_event_opinion_variants_200.json"
+    if expanded_input.exists():
+        return expanded_input
+    return PROJECT_ROOT / "eval" / "hot_event_opinion_variants.json"
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="读取 hot_event 测试集并生成结构化 JSON 分发策略。",
@@ -50,8 +57,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--input",
         type=Path,
-        default=PROJECT_ROOT / "eval" / "hot_event_opinion_variants.json",
-        help="hot_event 输入文件，可以是单个对象或事件数组。",
+        default=default_eval_input_path(),
+        help="hot_event 输入文件，可以是单个对象或事件数组；默认优先使用 200 条扩展事件集。",
     )
     parser.add_argument(
         "--image",
