@@ -40,7 +40,7 @@ dist/
 outputs/
 reports/
 tests/pipeline_step_outputs/
-eval/
+eval/output/
 
 # Local datasets
 data/
