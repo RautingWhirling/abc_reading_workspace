@@ -41,6 +41,8 @@ outputs/
 reports/
 tests/pipeline_step_outputs/
 eval/output/
+web/frontend/node_modules/
+web/frontend/dist/
 
 # Local datasets
 data/

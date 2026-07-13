@@ -56,6 +56,7 @@ abc_reading_workspace/
     output/                      # 热点评测输出 JSON
   outputs/
     strategy/                    # main.py 直接运行时的输出
+    web_runs/                    # Web 控制台运行输出
   scripts/                       # 数据预处理脚本
   src/influence_strategy/
     data_loader.py
@@ -68,8 +69,10 @@ abc_reading_workspace/
     eval_hot_events.py
     llm_client.py
     prompts.py
+    web_app.py
     reporting.py
     models.py
+  web/frontend/                  # React/Vite 前端
   tests/
     pipeline_step_outputs/       # 热点评测中间过程追踪输出
     test_*.py
@@ -152,6 +155,37 @@ conda activate abc-reading-strategy
 - `networkx`
 - `pandas`
 - `matplotlib`
+- `fastapi`
+- `uvicorn`
+- `python-multipart`
+
+
+## Web 控制台
+
+项目提供一个轻量 Web 控制台，支持单事件 JSON/表单输入、图片输入和 200 条热点事件一键评测。Web 运行结果默认写入 `outputs/web_runs/`，不会写入 `eval/output/`。
+
+后端启动：
+
+```powershell
+conda activate abc-reading-strategy
+uvicorn --app-dir src influence_strategy.web_app:app --reload --host 127.0.0.1 --port 8000
+```
+
+前端启动：
+
+```powershell
+cd web/frontend
+npm install
+npm run dev
+```
+
+浏览器访问：
+
+```text
+http://127.0.0.1:5173
+```
+
+前端默认启用 LLM，页面右上角可以手动关闭。200 条批量评测默认读取 `eval/hot_event_opinion_variants_200.json`。
 
 
 ## LLM 配置
